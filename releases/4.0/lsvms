@@ -1,0 +1,175 @@
+#!/bin/bash
+
+# Changelog
+# Lists XCP/Xenserver Virtual Machines one per line with uuid and host
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: June 27, 2012
+# Version: 0.6
+# Date: Sept 15, 2012
+# Complete rewrite using printspaces, sort_vmnames and getcolwidth
+# Now provides four output MODES - name, uuid. mixed and both
+# Also provides CSV output
+# Version: 0.7
+# Date: Oct 14, 2012
+# Changed to XCP Tools 3.0 spec. Generic sort_arrays, xe remote with get_poolcred, removed IFS changes.
+# Added whitespace commandline parameter. Cleaned up csv output for Windows terminals. Added sort order on column
+# Version: 0.8
+# Date: Nov 14, 2012
+# Chanted to XCP tools 4.0 spec. fsort_arrays...
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/library.sh" 
+	setcolors	
+	DEFSPACE="5"
+	MINSPACE="$DEFSPACE"
+	MODE="mixed"
+	VERSION="0.7"
+	ORDER="vmname"
+}
+
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-c - output comma seperated values"
+        echo "-u - shows VM UUID, Status, Host UUID"
+        echo "-b - shows VM Name, Status, VMUUID, Host Name and Host UUID"
+        echo "-n - shows VM Name, Status and Hostname"
+        echo "-m - shows VM Name, Status, VM UUID and Hostname"
+        echo "-o <value> - changes sort order by column, value can be vmname, hostname, vmuuid, hostuud"
+        echo "-s <host> - remote poolmaster host"
+        echo "-p <password> - remote poolmaster password"
+        echo "-h - this help text"
+        echo "-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+getvmdata()
+{
+	gethostdata
+	# Get list of Virtual Machines and loop through it. Use BASH pattern matching to assign each array item
+	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
+	VMLIST=$(xe vm-list params=uuid,name-label,power-state,resident-on,is-control-domain | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g')
+	i=0
+	IFS=$'\n'
+	for VMLINE in $VMLIST ;do
+		# Use BASH string operators to get the each field subtracting it from the VMLINE.
+		VMUUIDS[$i]="${VMLINE%%,*}" 		;VMLINE="${VMLINE#*,}"
+		VMNAMES[$i]="${VMLINE%%,*}"     	;VMLINE="${VMLINE#*,}"
+		CONTROLDOMAIN[$i]="${VMLINE%%,*}"   ;VMLINE="${VMLINE#*,}"
+		if [[ ! "${CONTROLDOMAIN[$i]}" = "false" ]] ;then
+			continue
+		fi
+		STATES[$i]="${VMLINE%%,*}"      	;VMLINE="${VMLINE#*,}"
+		VMHOSTUUIDS[$i]="${VMLINE%%,*}" 	;VMLINE="${VMLINE#*,}"
+		if [[ "${VMHOSTUUIDS[$i]}" = '<not in database>' ]] ;then
+			VMHOSTUUIDS[$i]="" ; VMHOSTNAMES[$i]=""
+		else
+			for j in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
+				if [[ "${VMHOSTUUIDS[$i]}" = "${HOSTUUIDS[$j]}" ]] ;then
+					VMHOSTNAMES[$i]="${HOSTNAMES[$j]}"
+				fi
+			done
+		fi
+		(( i++ ))
+	done
+}
+
+setup 
+while getopts :dcubnmhw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                b) MODE="both" ;;
+                n) MODE="name" ;;
+                m) MODE="mixed" ;;
+                o) ORDER="$OPTARG" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+
+# Set Title array depending on MODE
+case "$MODE" in
+	"uuid")   TITLES=( 'VM UUID' 'Status' 'Host UUID' ) ;;
+	"name")   TITLES=( 'VM Name' 'Status' 'Host Name' ) ;;
+   "mixed")   TITLES=( 'VM Name' 'Status' 'VM UUID' 'Host Name' ) ;;
+	"both")   TITLES=( 'VM Name' 'Status' 'VM UUID' 'Host Name' 'Host UUID' ) ;;
+esac
+
+# Populate arrays for VM UUIDs, VM name-label, power state, Host Name and Host UUID
+getvmdata
+
+# Sort data arrays
+case "$ORDER" in 
+	  "vmname") fsort_arrays VMNAMES VMUUIDS STATES VMHOSTUUIDS VMHOSTNAMES CONTROLDOMAIN ;;
+	"hostname") fsort_arrays VMHOSTNAMES VMNAMES VMUUIDS STATES VMHOSTUUIDS CONTROLDOMAIN  ;;
+	  "vmuuid") fsort_arrays VMUUIDS VMHOSTUUIDS VMHOSTNAMES VMNAMES  STATES CONTROLDOMAIN ;;
+	"hostuuid") fsort_arrays VMHOSTUUIDS VMHOSTNAMES VMNAMES VMUUIDS STATES CONTROLDOMAIN ;;
+esac
+
+# Get the length of each column and store it in COLLONGEST[]
+case "$MODE" in
+	"uuid")  COLLONGEST[0]=$(getcolwidth "${TITLES[2]}" "${VMUUIDS[@]}")
+			 COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+			 COLLONGEST[2]=$(getcolwidth "${TITLES[4]}" "${VMHOSTUUIDS[@]}")
+	 ;;
+	"name")  COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+			 COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+			 COLLONGEST[2]=$(getcolwidth "${TITLES[3]}" "${VMHOSTNAMES[@]}")
+	 ;;
+	"mixed") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+			 COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+			 COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMUUIDS[@]}")
+			 COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMHOSTNAMES[@]}")
+	 ;;
+	 "both") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+			 COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+			 COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMUUIDS[@]}")
+			 COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMHOSTNAMES[@]}")
+			 COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMHOSTUUIDS[@]}")
+	 ;;
+esac
+
+
+# Print column headings and data columns
+printheadings
+for i in $(seq 0 $(( ${#VMUUIDS[@]} - 1 )) ) ;do
+	case "$MODE" in
+		"uuid")  cecho "${VMUUIDS[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMUUIDS[$i]}" 
+				 cecho "${STATES[$i]}" red      	;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMHOSTUUIDS[$i]}" blue
+		;;
+		"name")  cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
+				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMHOSTNAMES[$i]}" blue
+		;;
+		"mixed") cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
+				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" blue 		;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+				 cecho "${VMHOSTNAMES[$i]}" blue 
+		;;
+		"both")  cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
+				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" blue 		;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+				 cecho "${VMHOSTNAMES[$i]}" blue 	;printspaces "${COLLONGEST[3]}" "${#VMHOSTNAMES[$i]}" 
+				 cecho "${VMHOSTUUIDS[$i]}" blue
+		;;
+	esac  
+	echo ""   
+done

@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# Deletes XCP/Xenserver template
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: August 22, 2012
+
+setup()
+{
+	setcolors
+	TMPDIR=$(mktemp -d)
+	IFS=$'\n'
+	MINSPACE="3"
+	VERSION="0.6"
+	TITLES=( 'Template' 'UUID' )
+}
+
+#give names to ansi sequences
+setcolors()
+{
+	black='\e[30;47m'
+	white='\e[37;47m'
+    red='\e[0;31m'
+    blue='\e[0;34m'
+    cyan='\e[0;36m'
+    off='\e[0m'
+}
+
+#color echo
+cecho ()                     
+{
+	MSG="${1}"       
+	if [ -z $2 ] ;then
+		color="white"
+	else
+		eval color=\$$2
+	fi     
+  	echo -ne "${color}"
+  	echo -ne "$MSG"
+  	echo -ne "${off}"                      
+}
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-h - this help text"
+        echo ""
+        exit 1
+}
+
+rmtemplate()
+{
+	local TMPLU="$1"
+	local TMPLN=$(xe template-list uuid=$TMPLU params=name-label --minimal)
+	echo "Deleting template $TMPLN with uuid of $TMPL"
+	#xe template-param-set other-config:default_template=false uuid="$TMPL"
+	#xe template-param-set is-a-template=false uuid="$TMPL"
+	#xe vm-destroy uuid="$TMPL"
+}
+
+cleanup()
+{
+	rm -Rf "$TMPDIR"
+	echo "Exiting"
+	exit
+}
+
+trap cleanup SIGINT SIGTERM
+setup
+
+while getopts :dvch opt
+do
+        case $opt in
+                d) set -x ;;
+                v) MODE="verbose" ;;
+                c) CSV="yes" ;;
+				h) syntax ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+
+# Populate arrays for Template UUIDs and Template Nmes
+TMPLUUIDS=( $(xe template-list params=uuid --minimal | sed 's/,/\n/g') )
+for i in $(seq 0 $(( ${#TMPLUUIDS[@]} - 1 )) ) ;do
+	TMPLNAMES[$i]=$(xe template-list uuid="${TMPLUUIDS[$i]}" params=name-label --minimal)
+done
+
+# Get the length of each column and store it in COLLONGEST[]
+COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${TMPLNAMES[@]}")
+COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${TMPLUUIDS[@]}")
+
+echo "" > "$TMPDIR/tmpllist.txt"
+
+# sort template names and UUIDs using the sort command (twice as fast as bash or eval)
+for i in $(seq 0 $(( ${#TMPLUUIDS[@]} - 1 )) ) ;do
+	cecho "${TMPLNAMES[$i]}" cyan ;	printspaces "${COLLONGEST[0]}" "${#TMPLNAMES[$i]}" 
+	cecho "${TMPLUUIDS[$i]}" blue ;	printspaces "${COLLONGEST[1]}" "${#TMPLUUIDS[$i]}" 
+	echo "" 
+done | sort >> "$TMPDIR/tmpllist.txt"
+
+# Create menu of templates
+PS3="Please Choose: "
+select LINE in $(cat "$TMPDIR/tmpllist.txt")
+do
+	UUID=$(echo "$LINE" | egrep -o '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')
+	rmtemplate "$UUID"
+	break ;
+done
+
+cleanup
+

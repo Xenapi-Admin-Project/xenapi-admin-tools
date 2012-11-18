@@ -1,0 +1,127 @@
+#!/bin/bash
+
+# Lists the load on each Host CPU core
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: July 22, 2012
+# Version: 0.6
+# Date: September 16, 2012
+# Complete rewrite to use getcolwidth and printspaces.
+# Now outputs uuid/name views and CSV format
+# Version 0.7
+# Date: November 14, 2012
+# Moved to Xenapi Admin Tools 4.0 spec
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/library.sh" 
+	setcolors	
+	DEFSPACE="5"
+	MINSPACE="$DEFSPACE"
+	MODE="name"
+	VERSION="0.7"
+	IFS=$'\n'
+	REFRESH="2" #seconds
+	PLACEHOLDER="--"
+}
+
+syntax()
+{
+	echo "$(basename $0) $VERSION"
+    echo ""
+    echo "Syntax: $(basename $0) [options]"
+    echo "Options:"
+	echo "-d - shell debugging"
+	echo "-f - continuous updates"
+	echo "-n - show Names (default)"
+	echo "-u - show UUIDs"
+	echo "-t <seconds> - continuous updates every <seconds>"
+	echo "-h - this help text"
+    echo ""
+    exit
+}
+
+showcpuinfo()
+{
+	#Loop through hosts
+	# for each host loop through CPUs, get number and load.
+	
+	for i in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
+		case "$MODE" in
+			"uuid") cecho "${HOSTUUIDS[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#HOSTUUIDS[$i]}" ;;
+			"name") cecho "${HOSTNAMES[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#HOSTNAMES[$i]}" ;;
+		esac
+		cecho "${PLACEHOLDER}" blue ; printspaces "${COLLONGEST[1]}" "${#PLACEHOLDER}"
+		cecho "${PLACEHOLDER}" blue ; printspaces "${COLLONGEST[2]}" "${#PLACEHOLDER}"
+		
+		COLSPACES=$(( ${COLLONGEST[0]} + $MINSPACE ))
+		for CPUNUM in $(xe host-cpu-list host-uuid=${HOSTUUIDS[$i]} params=number --minimal | sed 's/\,/\n/g' | sed '/^$/d' | sort); do	
+			COREUUID=$(xe host-cpu-list host-uuid="${HOSTUUIDS[$i]}" number="$CPUNUM" params=uuid --minimal)
+			LOAD=$(xe host-cpu-param-get uuid="$COREUUID" param-name=utilisation)
+			if [[ "$CSV" = "yes" ]] ;then
+				echo "" ; echo -ne ","
+			else
+				echo "" ; printf "%*s" "$COLSPACES"
+			fi
+			case "$MODE" in
+				"uuid") cecho "${COREUUID[$i]}" blue ; printspaces "${COLLONGEST[1]}" "${#COREUUID[$i]}"  ;;
+				"name") cecho "$CPUNUM" blue ; printspaces "${COLLONGEST[1]}" "${#CPUNUM}"  ;;
+			esac
+			cecho "${LOAD}" blue ; printspaces "${COLLONGEST[2]}" "${#LOAD}"
+		done
+		echo ""
+	done
+	echo "" 
+}
+
+setup
+while getopts :ofdt:unch opt ;do
+        case $opt in
+			f) FOLLOW="yes" ;;
+			d) set -x ;;
+			t) FOLLOW="yes"
+			   REFRESH="$OPTARG" ;;		
+			u) MODE="uuid" ;;
+			n) MODE="name" ;; 
+			c) CSV="yes" ;; 
+			h) syntax ;;
+            \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+
+
+# Get ALL CPUNUMMS and CPUUUIDS
+gethostdata
+getcpudata
+CPULOAD=($(xe host-cpu-param-get uuid="${CPUUUIDS[0]}" param-name=utilisation ))
+
+# Set TITLE array and Column width depending on MODE
+case "$MODE" in
+	"uuid") TITLES=( 'Host UUID' 'CPU Core' 'Utilization' ) 
+			COLLONGEST[0]=$(getcolwidth "${TITLES[1]}" "${HOSTUUIDS[@]}") 
+			COLLONGEST[1]=$(getcolwidth "${TITLES[2]}" "${CPUUUIDS[@]}") 
+			COLLONGEST[2]=$(getcolwidth "${TITLES[3]}" "${CPULOAD[@]}") ;;
+	"name") TITLES=( 'Host' 'CPU Core' 'Utilization' ) 
+			COLLONGEST[0]=$(getcolwidth "${TITLES[1]}" "${HOSTNAMES[@]}") 
+			COLLONGEST[1]=$(getcolwidth "${TITLES[2]}" "${CPUNUMS[@]}")
+			COLLONGEST[2]=$(getcolwidth "${TITLES[3]}" "${CPULOAD[@]}") ;;
+esac
+
+if [ "$FOLLOW" = "yes" ] ;then
+	while true ;do
+		clear
+		if [ "$FOLLOW" = "yes" ] ;then
+			cecho "Every ${REFRESH}s:" off ; cecho " $(basename $0)" off
+			echo "" ; echo ""
+		fi
+		printheadings
+		showcpuinfo
+		sleep "$REFRESH"
+	done
+else
+	printheadings
+	showcpuinfo
+fi
+
