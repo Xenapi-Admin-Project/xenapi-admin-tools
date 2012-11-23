@@ -50,7 +50,7 @@ showcpuinfo()
 	for i in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
 		case "$MODE" in
 			"uuid") cecho "${HOSTUUIDS[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#HOSTUUIDS[$i]}" ;;
-			"name") cecho "${HOSTNAMES[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#HOSTNAMES[$i]}" ;;
+			"name") txt="${HOSTNAMES[$i]}" ; cecho "${txt}" cyan ; printspaces "${COLLONGEST[0]}" "${#txt}"  ;;
 		esac
 		cecho "${PLACEHOLDER}" blue ; printspaces "${COLLONGEST[1]}" "${#PLACEHOLDER}"
 		cecho "${PLACEHOLDER}" blue ; printspaces "${COLLONGEST[2]}" "${#PLACEHOLDER}"

@@ -17,6 +17,9 @@
 # Version: 0.8
 # Date: Nov 14, 2012
 # Chanted to XCP tools 4.0 spec. fsort_arrays...
+# Version: 0.8.1
+# Date: Nov 20, 2012
+# Fixed Unicode issues for names
 
 setup()
 {
@@ -57,19 +60,19 @@ getvmdata()
 	gethostdata
 	# Get list of Virtual Machines and loop through it. Use BASH pattern matching to assign each array item
 	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
-	VMLIST=$(xe vm-list params=uuid,name-label,power-state,resident-on,is-control-domain | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g')
+	LIST=$(xe vm-list params=uuid,name-label,is-control-domain,power-state,resident-on | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g')
 	i=0
 	IFS=$'\n'
-	for VMLINE in $VMLIST ;do
-		# Use BASH string operators to get the each field subtracting it from the VMLINE.
-		VMUUIDS[$i]="${VMLINE%%,*}" 		;VMLINE="${VMLINE#*,}"
-		VMNAMES[$i]="${VMLINE%%,*}"     	;VMLINE="${VMLINE#*,}"
-		CONTROLDOMAIN[$i]="${VMLINE%%,*}"   ;VMLINE="${VMLINE#*,}"
+	for LINE in $LIST ;do
+		# Use BASH string operators to get the each field subtracting it from the LINE.
+		VMUUIDS[$i]="${LINE%%,*}" 			;LINE="${LINE#*,}"
+		VMNAMES[$i]="${LINE%%,*}"     		;LINE="${LINE#*,}"
+		CONTROLDOMAIN[$i]="${LINE%%,*}"  	;LINE="${LINE#*,}"
 		if [[ ! "${CONTROLDOMAIN[$i]}" = "false" ]] ;then
 			continue
 		fi
-		STATES[$i]="${VMLINE%%,*}"      	;VMLINE="${VMLINE#*,}"
-		VMHOSTUUIDS[$i]="${VMLINE%%,*}" 	;VMLINE="${VMLINE#*,}"
+		STATES[$i]="${LINE%%,*}"      		;LINE="${LINE#*,}"
+		VMHOSTUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
 		if [[ "${VMHOSTUUIDS[$i]}" = '<not in database>' ]] ;then
 			VMHOSTUUIDS[$i]="" ; VMHOSTNAMES[$i]=""
 		else
@@ -155,19 +158,19 @@ for i in $(seq 0 $(( ${#VMUUIDS[@]} - 1 )) ) ;do
 				 cecho "${STATES[$i]}" red      	;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
 				 cecho "${VMHOSTUUIDS[$i]}" blue
 		;;
-		"name")  cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
-				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+		"name")  txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" red 					;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
 				 cecho "${VMHOSTNAMES[$i]}" blue
 		;;
-		"mixed") cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
-				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
-				 cecho "${VMUUIDS[$i]}" blue 		;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+		"mixed") txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" red 					;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" blue 				;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
 				 cecho "${VMHOSTNAMES[$i]}" blue 
 		;;
-		"both")  cecho "${VMNAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VMNAMES[$i]}" 
-				 cecho "${STATES[$i]}" red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
-				 cecho "${VMUUIDS[$i]}" blue 		;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
-				 cecho "${VMHOSTNAMES[$i]}" blue 	;printspaces "${COLLONGEST[3]}" "${#VMHOSTNAMES[$i]}" 
+		"both")  txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" red 					;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" blue 				;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+				 txt="${VMHOSTNAMES[$i]}" ; cecho "${txt}" blue ; printspaces "${COLLONGEST[3]}" "${#txt}"
 				 cecho "${VMHOSTUUIDS[$i]}" blue
 		;;
 	esac  

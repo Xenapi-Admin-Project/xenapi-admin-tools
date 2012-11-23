@@ -19,6 +19,9 @@
 # Version: 0.9.5 
 # Date: Nov 14, 2012
 # Optimized a bit, changed to fsort_arrays. 
+# Version: 0.9.6
+# Date: Nov 20, 2012
+# Fixed Unicode issues for names
 
 setup()
 {

@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Shows storage repository size
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: July 25, 2012
+# Version: 0.6
+# Date: Sept 14, 2012
+# Rewrote using getcolwidth, printspaces and sort_srnames
+# Version: 0.7
+# Date: Sept 15, 2012
+# Moved to MODE= to allow for future expansion
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/library.sh" 
+	setcolors	
+	DEFSPACE="10"
+	MINSPACE="$DEFSPACE"
+	MODE="name"
+	VERSION="0.7"
+}
+
+syntax()
+{
+        echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-h - this help text"
+        echo "-c - output comma seperated values"
+        echo "-u - show UUIDs"
+        echo "-n - show Names (default)"
+        echo "-s <host> - remote poolmaster host"
+        echo "-p <password> - remote poolmaster password"
+        echo "-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+setup 
+while getopts :dcubnmhw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                n) MODE="name" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Set Title array depending on MODE
+case "$MODE" in
+	"uuid") TITLES=( 'Storage Repository UUID' 'Size' 'Used' 'Avail' 'Full%' 'SR Type') ;;
+	"name") TITLES=( 'Storage Repository' 'Size' 'Used' 'Avail' 'Full%' 'SR Type') ;;
+esac
+
+getsrdata
+# Get COLLONGEST depending on MODE
+case "$MODE" in
+	"uuid") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${SRUUIDS[@]}") ;;
+	"name") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${SRNAMES[@]}") ;;
+esac
+COLLONGEST[1]="4"
+COLLONGEST[2]="4"
+COLLONGEST[3]="4"
+COLLONGEST[4]="4"
+COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${SRTYPES[@]}")
+
+# Print column headings
+for i in $(seq 0 $(( ${#TITLES[@]} - 1 )) ) ;do
+	cecho "${TITLES[$i]}" off ; printspaces "${COLLONGEST[$i]}" "${#TITLES[$i]}"
+done
+echo ""
+
+i=0
+for i in $(seq 0 $(( ${#SRUUIDS[@]} - 1 )) ) ;do	
+    case "$MODE" in
+		"uuid") cecho "${SRUUIDS[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#SRUUIDS[$i]}"  ;;
+		"name") txt="${SRNAMES[$i]}" ; cecho "${txt}" cyan ; printspaces "${COLLONGEST[0]}" "${#txt}"  ;;
+	esac    
+    cecho "${TOTALSIZE[$i]}" 	blue ; printspaces "${COLLONGEST[1]}" "${#TOTALSIZE[$i]}" 
+    cecho "${USEDSIZE[$i]}" 	blue ; printspaces "${COLLONGEST[2]}" "${#USEDSIZE[$i]}" 
+    cecho "${FREESIZE[$i]}" 	blue ; printspaces "${COLLONGEST[3]}" "${#FREESIZE[$i]}" 
+    cecho "${PERCENTSIZE[$i]}" 	blue ; printspaces "${COLLONGEST[4]}" "${#PERCENTSIZE[$i]}" 
+    cecho "${SRTYPES[$i]}" 		blue ; printspaces "${COLLONGEST[5]}" "${#SRTYPES[$i]}" 
+	echo ""
+done
+

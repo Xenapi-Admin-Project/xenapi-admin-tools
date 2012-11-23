@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Version 4.0
 
 #give names to ansi sequences
@@ -60,6 +62,7 @@ getcolwidth()
 		fi
 	done
 	echo "$LONGEST"
+	
 }
 
 # Print column headings
@@ -267,13 +270,57 @@ show_arraymenu()
 # Get host list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
 gethostdata()
 {
-	HOSTLIST=$(xe host-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g')
+	local LIST=$(xe host-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g')
 	i=0
-	for HOSTLINE in $HOSTLIST ;do
-		HOSTNAMES[$i]="${HOSTLINE##*,}"
-		HOSTUUIDS[$i]="${HOSTLINE%%,*}"
+	for LINE in $LIST ;do
+		HOSTUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		HOSTNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
 		(( i++ ))
 	done
+	sort_arrays HOSTNAMES HOSTUUIDS
+}
+
+# Get SR list and assign SRUUIDS[], SRNAMES[] and SRTYPES[] arrays
+getsrdata()
+{
+	local IFS=$'\n'
+	local LIST=$(xe sr-list params=uuid,name-label,type,physical-utilisation,physical-size | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g' )
+	i=0
+	for LINE in $LIST ;do
+		SRUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		SRNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		SRUSED[$i]="${LINE%%,*}"  ;LINE="${LINE#*,}"
+		SRSIZE[$i]="${LINE%%,*}"  ;LINE="${LINE#*,}"
+		if [[ "${SRUSED[$i]}" = '-1' || "${SRSIZE[$i]}" = '-1' ]] ; then
+			SRUSED[$i]=0 ; SRSIZE[$i]=0
+		fi
+		if [[ "${SRUSED[$i]}" -gt 0 ]] ;then
+			PERCENTSIZE[$i]=$(echo "scale=2; ${SRUSED[$i]} / ${SRSIZE[$i]} * 100" | bc | sed s/\\.[0-9]\\+//)
+		else
+			PERCENTSIZE[$i]="100"	
+		fi
+		SRTYPES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		TOTALSIZE[$i]=$(getunit "${SRSIZE[$i]}")
+		USEDSIZE[$i]=$(getunit "${SRUSED[$i]}")
+		TEMPSIZE=$(( ${SRSIZE[$i]} - ${SRUSED[$i]} ))
+		FREESIZE[$i]=$(getunit "$TEMPSIZE")
+		(( i++ ))
+	done
+	fsort_arrays SRNAMES SRUUIDS SRTYPES SRUSED SRSIZE TOTALSIZE USEDSIZE FREESIZE PERCENTSIZE
+}
+
+# Get CPU core list and assign CPUUUIDS[] and CPUNUMS[] arrays
+getcpudata()
+{
+	local LIST=$(xe host-cpu-list params=uuid,host-uuid,number | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g')
+	i=0
+	for LINE in $LIST ;do
+		CPUUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		CPUHOSTUUIDS[$i]="${LINE%%,*}" 	;LINE="${LINE#*,}"
+		CPUNUMS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		(( i++ ))
+	done
+	sort_arrays CPUUUDS CPUHOSTUUDS CPUNUMS
 }
 
 
