@@ -142,7 +142,7 @@ if [[ "$MODE" = "verbose" ]] ;then
 	for LINE in $(cat $TMPDIR/tmpllist.txt) ;do
 		echo "$LINE"
 		UUID=$(echo "$LINE" | egrep -o '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')
-		xe template-param-get uuid="$UUID" params-name=name-description
+		xe template-param-get uuid="$UUID" param-name=name-description
 		echo ""
 	done
 else
