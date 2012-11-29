@@ -20,6 +20,9 @@
 # Version: 0.8.1
 # Date: Nov 20, 2012
 # Fixed Unicode issues for names
+# Version: 0.8.2
+# Date: Nov 28, 2012
+# Control domain was showing up if it sorted last. Fixed VMHOSTNAME/VMHOSTUUID null assignment bug
 
 setup()
 {
@@ -29,7 +32,7 @@ setup()
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"
 	MODE="mixed"
-	VERSION="0.7"
+	VERSION="0.8.2"
 	ORDER="vmname"
 }
 
@@ -38,19 +41,19 @@ syntax()
 {
 		echo "$(basename $0) $VERSION"
         echo ""
-        echo "Syntax: $(basename $0) [options]"
-        echo "Options:"
-        echo "-d - shell debugging"
-        echo "-c - output comma seperated values"
-        echo "-u - shows VM UUID, Status, Host UUID"
-        echo "-b - shows VM Name, Status, VMUUID, Host Name and Host UUID"
-        echo "-n - shows VM Name, Status and Hostname"
-        echo "-m - shows VM Name, Status, VM UUID and Hostname"
-        echo "-o <value> - changes sort order by column, value can be vmname, hostname, vmuuid, hostuud"
-        echo "-s <host> - remote poolmaster host"
-        echo "-p <password> - remote poolmaster password"
-        echo "-h - this help text"
-        echo "-w - number of whitespaces between columns"
+        echo "	Syntax: $(basename $0) [options]"
+        echo "	Options:"
+        echo "	-d - shell debugging"
+        echo "	-c - output comma seperated values"
+        echo "	-u - shows VM UUID, Status, Host UUID"
+        echo "	-b - shows VM Name, Status, VMUUID, Host Name and Host UUID"
+        echo "	-n - shows VM Name, Status and Hostname"
+        echo "	-m - shows VM Name, Status, VM UUID and Hostname"
+        echo "	-o <value> - changes sort order by column, value can be vmname, hostname, vmuuid, hostuud"
+        echo "	-s <host> - remote poolmaster host"
+        echo "	-p <password> - remote poolmaster password"
+        echo "	-h - this help text"
+        echo "	-w - number of whitespaces between columns"
         echo ""
         exit
 }
@@ -60,6 +63,7 @@ getvmdata()
 	gethostdata
 	# Get list of Virtual Machines and loop through it. Use BASH pattern matching to assign each array item
 	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
+	set -x
 	LIST=$(xe vm-list params=uuid,name-label,is-control-domain,power-state,resident-on | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g')
 	i=0
 	IFS=$'\n'
@@ -68,13 +72,14 @@ getvmdata()
 		VMUUIDS[$i]="${LINE%%,*}" 			;LINE="${LINE#*,}"
 		VMNAMES[$i]="${LINE%%,*}"     		;LINE="${LINE#*,}"
 		CONTROLDOMAIN[$i]="${LINE%%,*}"  	;LINE="${LINE#*,}"
-		if [[ ! "${CONTROLDOMAIN[$i]}" = "false" ]] ;then
+		if [[ "${CONTROLDOMAIN[$i]}" = "true" ]] ;then
+			unset VMUUIDS[$i] ; unset VMNAMES[$i] ; unset CONTROLDOMAIN[$i]
 			continue
 		fi
 		STATES[$i]="${LINE%%,*}"      		;LINE="${LINE#*,}"
 		VMHOSTUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
 		if [[ "${VMHOSTUUIDS[$i]}" = '<not in database>' ]] ;then
-			VMHOSTUUIDS[$i]="" ; VMHOSTNAMES[$i]=""
+			VMHOSTUUIDS[$i]="--" ; VMHOSTNAMES[$i]="--"
 		else
 			for j in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
 				if [[ "${VMHOSTUUIDS[$i]}" = "${HOSTUUIDS[$j]}" ]] ;then
@@ -84,6 +89,7 @@ getvmdata()
 		fi
 		(( i++ ))
 	done
+	set +x
 }
 
 setup 
