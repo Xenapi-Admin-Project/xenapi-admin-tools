@@ -22,13 +22,16 @@
 # Version: 0.9.6
 # Date: Nov 20, 2012
 # Fixed Unicode issues for names
+# Version: 0.9.7
+# Date: Nov 28, 2012
+# Fixed bug in outputing map parameters - software version, cpu cores, cpu speed, network backend etc..
 
 setup()
 {
 	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
 	source "$SCRIPTDIR/library.sh" 
 	setcolors
-	VERSION="0.9.5"
+	VERSION="0.9.7"
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"
 	MODE="name"
@@ -72,7 +75,8 @@ esac
 gethostdata
 # Populate data arrays
 for i in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
-	HOSTVMNUM[$i]=$(xe vm-list params=resident-on power-state=running  is-control-domain=false | grep -c "${HOSTUUIDS[$i]}")
+	HOSTVMNUM[$i]=$(xe vm-list params=resident-on power-state=running is-control-domain=false | grep -c "${HOSTUUIDS[$i]}")
+	IFS=$'\n'
 	for PARAM in $(xe host-param-get uuid="${HOSTUUIDS[$i]}" param-name=software-version | sed 's/; /\n/g') ;do
 		case "$PARAM" in
 			product_brand:*) 	HOSTSWTYPE[$i]="${PARAM##*: }" 	; continue 	;;
@@ -90,6 +94,7 @@ for i in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
 	HOSTMAXMEM[$i]=$(getunit $(xe host-param-get uuid="${HOSTUUIDS[$i]}" param-name=memory-total))
 	HOSTMAXFREE[$i]=$(getunit $(xe host-param-get uuid="${HOSTUUIDS[$i]}" param-name=memory-free))
 done
+
 
 if [[ "${#HOSTUUIDS[@]}" -lt 3 ]] ;then
 	sort_arrays HOSTNAMES HOSTUUIDS HOSTVMNUM HOSTSWTYPE HOSTCPUTYPE HOSTCPUCOUNT HOSTCPUSPEED HOSTMAXMEM HOSTMAXFREE HOSTNETWORK
