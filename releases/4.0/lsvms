@@ -63,7 +63,6 @@ getvmdata()
 	gethostdata
 	# Get list of Virtual Machines and loop through it. Use BASH pattern matching to assign each array item
 	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
-	set -x
 	LIST=$(xe vm-list params=uuid,name-label,is-control-domain,power-state,resident-on | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g')
 	i=0
 	IFS=$'\n'
@@ -89,7 +88,6 @@ getvmdata()
 		fi
 		(( i++ ))
 	done
-	set +x
 }
 
 setup 
