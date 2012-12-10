@@ -25,6 +25,9 @@
 # Version: 0.9.7
 # Date: Nov 28, 2012
 # Fixed bug in outputing map parameters - software version, cpu cores, cpu speed, network backend etc..
+# Version: 0.9.8
+# Date: Dec 9, 2012
+# Added match statement for XCP 1.6 platform_name/platform_version.
 
 setup()
 {
@@ -79,9 +82,9 @@ for i in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
 	IFS=$'\n'
 	for PARAM in $(xe host-param-get uuid="${HOSTUUIDS[$i]}" param-name=software-version | sed 's/; /\n/g') ;do
 		case "$PARAM" in
-			product_brand:*) 	HOSTSWTYPE[$i]="${PARAM##*: }" 	; continue 	;;
-			product_version:*) 	HOSTSWVER[$i]="${PARAM##*: }" 	; continue	;;
-			network_backend:*) 	HOSTNETWORK[$i]="${PARAM##*: }" ; continue 	;;
+			product_brand:* | platform_name:*) 		HOSTSWTYPE[$i]="${PARAM##*: }" 	; continue 	;;
+			product_version:* | platform_version:*) HOSTSWVER[$i]="${PARAM##*: }" 	; continue	;;
+			network_backend:*) 						HOSTNETWORK[$i]="${PARAM##*: }" ; continue 	;;
 		esac
 	done
 	for PARAM in $(xe host-param-get uuid="${HOSTUUIDS[$i]}" param-name=cpu_info | sed 's/; /\n/g') ;do

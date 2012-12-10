@@ -15,6 +15,9 @@
 # Version 0.9
 # Date Sept 14, 2012
 # Added printspaces function and CSV support
+# Version 1.0
+# Date Nov 23, 2012
+# Converted to Xenapi Admin Tools 4.0
 
 
 setup()
@@ -47,11 +50,6 @@ syntax()
         exit
 }
 
-
-
-
-
-
 setup 
 while getopts :dchvw:s:o:p: opt ;do
         case $opt in
@@ -70,7 +68,7 @@ shift $(($OPTIND - 1))
 getpoolcreds
 
 # Set Title array 
-TITLES=( 'Name' 'UUID' )
+TITLES=( '...Name' 'UUID' )
 
 
 # Get template data and the length of each column
@@ -88,8 +86,7 @@ if [[ "$MODE" = "verbose" ]] ;then
 		txt="${TMPLNAMES[$i]}" ; cecho "${txt}" cyan  	;printspaces "${COLLONGEST[0]}" "${#txt}"
 		cecho "${TMPLUUIDS[$i]}" blue 		    		;printspaces "${COLLONGEST[1]}" "${#TMPLUUIDS[$i]}" 
 		echo ""
-		TMPLDESC=$(xe template-list uuid=${TMPLUUIDS[$i]} params=name-description --minimal)
-		echo "${TMPLDESC}"
+		xe template-list uuid=${TMPLUUIDS[$i]} params=name-description --minimal
 		echo ""
 	done
 else

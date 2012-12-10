@@ -21,7 +21,6 @@
 # Date: November 17th, 2012
 # Changed to Xenapi Admin Tools 4.0 optimizations
 
-
 setup()
 {
 	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))

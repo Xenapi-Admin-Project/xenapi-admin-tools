@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Version 4.0
 
 #give names to ansi sequences
@@ -101,22 +100,30 @@ isuuid()
 getunit()
 {
  	SIZE="$1"
-        for UNIT in K M G
-        do
-                SIZE=$(echo "scale=0; $SIZE / 1024" | bc)
-                if [[ $SIZE -lt 1024 ]]
-                then
-                        SIZE=${SIZE}${UNIT}
-                        break
-                fi
-        done
+ 	MAX="1024"
+	for UNIT in K M G T ;do
+		SIZE=$(echo "scale=2; $SIZE / 1024" | bc)
+		case $(echo "r=1;if($SIZE<$MAX)r=0;r"|bc) in
+			0) 
+				if [[ "${SIZE#*.}" == 00 ]] ;then
+					SIZE="${SIZE%%.*}${UNIT}"
+				else
+					SIZE="${SIZE}${UNIT}"
+				fi
+				break 
+			;;
+			1) 
+				continue 
+			;;
+		esac            
+	done  
 	echo "$SIZE"
 }
 
 # Simple yesno function returns 0 or 1
 yesno()
 {
-	echo -n "$1 <y|n>: "
+	echo -n "$1? <y|n> "
 	read ANS
 	while true ;do
 		case $ANS in
@@ -258,7 +265,7 @@ show_arraymenu()
 		echo "" 
 	done | sort > "$TMPDIR/tmpllist.txt"
 
-	OLDIFS="$IFS" ; IFS=$'\n'
+	local IFS=$'\n'
 	PS3="Please Choose: " ; echo ""
 	select LINE in $(cat "$TMPDIR/tmpllist.txt")
 	do
@@ -270,6 +277,7 @@ show_arraymenu()
 # Get host list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
 gethostdata()
 {
+	local IFS=$'\n'
 	local LIST=$(xe host-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g')
 	i=0
 	for LINE in $LIST ;do
@@ -278,6 +286,20 @@ gethostdata()
 		(( i++ ))
 	done
 	sort_arrays HOSTNAMES HOSTUUIDS
+}
+
+# Get template list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
+gettemplatedata()
+{
+	local IFS=$'\n'
+	local LIST=$(xe template-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}'  | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g'  | sed 's/(/\\(/g' | sed 's/)/\\)/g')
+	i=0
+	for LINE in $LIST ;do
+		TMPLUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		TMPLNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		(( i++ ))
+	done
+	fsort_arrays TMPLNAMES TMPLUUIDS
 }
 
 # Get SR list and assign SRUUIDS[], SRNAMES[] and SRTYPES[] arrays
@@ -312,6 +334,7 @@ getsrdata()
 # Get CPU core list and assign CPUUUIDS[] and CPUNUMS[] arrays
 getcpudata()
 {
+	local IFS=$'\n'
 	local LIST=$(xe host-cpu-list params=uuid,host-uuid,number | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g')
 	i=0
 	for LINE in $LIST ;do
