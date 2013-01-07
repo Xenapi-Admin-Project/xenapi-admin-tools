@@ -24,7 +24,7 @@
 setup()
 {
 	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
-	source "$SCRIPTDIR/library.sh" 
+	source "$SCRIPTDIR/xaptools.lib" 
 	setcolors	
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"

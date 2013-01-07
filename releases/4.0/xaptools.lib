@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Version 4.0
+# Version 4.1
 
 #give names to ansi sequences
 setcolors()

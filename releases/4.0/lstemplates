@@ -23,7 +23,7 @@
 setup()
 {
 	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
-	source "$SCRIPTDIR/library.sh" 
+	source "$SCRIPTDIR/xaptools.lib" 
 	setcolors	
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"
@@ -50,6 +50,11 @@ syntax()
         exit
 }
 
+
+
+
+
+
 setup 
 while getopts :dchvw:s:o:p: opt ;do
         case $opt in
@@ -68,7 +73,7 @@ shift $(($OPTIND - 1))
 getpoolcreds
 
 # Set Title array 
-TITLES=( '...Name' 'UUID' )
+TITLES=( 'Name' 'UUID' )
 
 
 # Get template data and the length of each column
