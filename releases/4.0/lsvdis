@@ -1,0 +1,191 @@
+#!/bin/bash
+
+# Shows virtual disk information
+# Authors: Lisa Nguyen (ltn821@hotmail.com), Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: 9/10/2012 
+# Version: 0.6
+# Rewrote to xenapi admin tools 4.0 spec
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/library.sh" 
+	setcolors	
+	DEFSPACE="3"
+	MINSPACE="$DEFSPACE"
+	MODE="mixed"
+	ORDER="vdi"
+	VERSION="0.6"
+}
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "	Syntax: $(basename $0) [options]"
+        echo "	Options:"
+        echo "	-d - shell debugging"
+        echo "	-c - output comma seperated values"
+        echo "	-u - shows VDI UUID, Size, SR UUID, SR type, VM UUID and VM device"
+		echo "	-n - shows VDI Name, Size, SR Name, SR type, VM Name and VM device"
+        echo "	-m - shows VDI UUID, Size, SR Name, SR type, VM Name and VM device"
+        echo "	-o <value> - changes sort order by column, value can be vdi, size, sr, vm or device"
+        echo "	-s <host> - remote poolmaster host"
+        echo "	-p <password> - remote poolmaster password"
+        echo "	-h - this help text"
+        echo "	-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+getvdidata()
+{
+	# optimizations are needed
+	# getunit takes 7 seconds
+	# vdi-param-get takes 11 seconds
+	# vbd-list takes 15 seconds
+	# Get list of VBDs and loop through it to get VDIs and SRs. Use BASH pattern matching to assign each array item
+	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
+	IFS=$'\n'
+	VDILIST=( $(xe vdi-list params=uuid,name-label,sr-uuid,sr-name-label,virtual-size | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g') )
+	VBDLIST=( $(xe vbd-list currently-attached=false params=vm-uuid,vm-name-label,vdi-uuid | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g') )
+	DEVLIST=( $(xe vbd-list params=vm-uuid,userdevice | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g') )
+	SRLIST=( $(xe sr-list params=uuid,type | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g') )
+	i=0
+	for VDILINE in ${VDILIST[@]} ;do
+		# Use BASH string operators to get the each field subtracting it from the LINE.
+		VDIUUIDS[$i]="${VDILINE%%,*}" 			;VDILINE="${VDILINE#*,}"
+		VDINAMES[$i]="${VDILINE%%,*}" 			;VDILINE="${VDILINE#*,}"
+		SRUUIDS[$i]="${VDILINE%%,*}"     		;VDILINE="${VDILINE#*,}"
+		SRNAMES[$i]="${VDILINE%%,*}"     		;VDILINE="${VDILINE#*,}"
+		for SRLINE in ${SRLIST[@]} ;do
+			if [[ "$SRLINE" =~ ${SRUUIDS[$i]}* ]] ;then
+				SRTYPES[$i]="${SRLINE#*,}"
+			fi
+		done
+		VDISIZES[$i]="${VDILINE%%,*}"     		
+		VDISIZES[$i]=$(getunit2 ${VDISIZES[$i]})
+		VMUUIDS[$i]="-" ; VMNAMES[$i]="-"
+		for VBDLINE in ${VBDLIST[@]} ;do
+			if [[ "$VBDLINE" == *${VDIUUIDS[$i]} ]] ;then
+				VMUUIDS[$i]="${VBDLINE%%,*}" 			;VBDLINE="${VBDLINE#*,}"
+				VMNAMES[$i]="${VBDLINE%%,*}" 			;VBDLINE="${VBDLINE#*,}"
+			fi
+		done
+		VMDEVS[$i]='-'
+		if [[ "${VMUUIDS[$i]}" != '-' ]] ;then
+			for DEVLINE in ${DEVLIST[@]} ;do
+				if [[ "$DEVLINE" == ${VMUUIDS[$i]}* ]] ;then
+					VMDEVS[$i]="${DEVLINE#*,}"
+				fi
+			done
+		fi
+		(( i++ ))
+	done
+}
+
+setup 
+while getopts :dcubnmhw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                m) MODE="mixed" ;;
+                n) MODE="name" ;;
+                o) ORDER="$OPTARG" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Populate arrays for VM UUIDs, VM name-label, power state, Host Name and Host UUID
+getvdidata
+
+
+# Set Title array depending on MODE
+case "$MODE" in
+	"uuid")   
+		TITLES=( 'VDI UUID' 'Size' 'SR UUID' 'Type' 'VM UUID' 'Dev' ) 
+		case "$ORDER" in 
+			"vdi")    	fsort_arrays VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"size")   	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS ;;
+			"sr") 		fsort_arrays SRUUIDS SRNAMES VDIUUIDS VDINAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMUUIDS VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES  ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDIUUIDS[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRUUIDS[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMUUIDS[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
+	;;
+   "mixed")   
+		TITLES=( 'VDI UUID' 'Size' 'SR Name' 'SR Type' 'VM Name' 'Dev' ) 
+		case "$ORDER" in 
+			"vdi")   	fsort_arrays VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"size")   	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS ;;
+			"sr") 		fsort_arrays SRNAMES VDIUUIDS VDINAMES SRUUIDS  SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS  VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES  ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDIUUIDS[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRNAMES[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMNAMES[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
+	;;
+	"name")   
+		TITLES=( 'VDI Name' 'Size' 'SR Name' 'SR Type' 'VM Name' 'Dev' ) 
+		case "$ORDER" in 
+			"vdi")    	fsort_arrays VDINAMES VDIUUIDS SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"size")  	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS ;;
+			"sr") 		fsort_arrays SRNAMES VDIUUIDS VDINAMES SRUUIDS  SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS  VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES  ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDINAMES[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRNAMES[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMNAMES[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
+	;;
+esac
+
+
+# Print column headings and data columns
+printheadings
+for i in $(seq 0 $(( ${#VDIUUIDS[@]} - 1 )) ) ;do
+	case "$MODE" in
+		"uuid")  cecho "${VDIUUIDS[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDIUUIDS[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRUUIDS[$i]}" cyan      	;printspaces "${COLLONGEST[2]}" "${#SRUUIDS[$i]}" 
+				 cecho "${SRTYPES[$i]}" cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" cyan      	;printspaces "${COLLONGEST[4]}" "${#VMUUIDS[$i]}" 
+				 cecho "${VMDEVS[$i]}" cyan
+		;;
+		"mixed") cecho "${VDIUUIDS[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDIUUIDS[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRNAMES[$i]}" cyan      	;printspaces "${COLLONGEST[2]}" "${#SRNAMES[$i]}" 
+				 cecho "${SRTYPES[$i]}" cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMNAMES[$i]}" cyan      	;printspaces "${COLLONGEST[4]}" "${#VMNAMES[$i]}" 
+				 cecho "${VMDEVS[$i]}" cyan
+		;;
+		"name")  cecho "${VDINAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDINAMES[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRNAMES[$i]}" cyan      	;printspaces "${COLLONGEST[2]}" "${#SRNAMES[$i]}" 
+				 cecho "${SRTYPES[$i]}" cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMNAMES[$i]}" cyan      	;printspaces "${COLLONGEST[4]}" "${#VMNAMES[$i]}" 
+				 cecho "${VMDEVS[$i]}" cyan
+		;;
+	esac  
+	echo ""   
+done

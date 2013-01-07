@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Version 4.0
 
 #give names to ansi sequences
@@ -99,11 +100,12 @@ isuuid()
 # Convert number to human readable size
 getunit()
 {
- 	SIZE="$1"
+ 	SIZE=$(($1 / 1024))
  	MAX="1024"
-	for UNIT in K M G T ;do
+	for UNIT in M G T ;do
 		SIZE=$(echo "scale=2; $SIZE / 1024" | bc)
-		case $(echo "r=1;if($SIZE<$MAX)r=0;r"|bc) in
+		#case $(echo "scale=2;r=1;if(($SIZE / 1024)<1024)r=0;r" | bc) in
+		case $(echo "r=1;if($SIZE<$MAX)r=0;r" | bc) in
 			0) 
 				if [[ "${SIZE#*.}" == 00 ]] ;then
 					SIZE="${SIZE%%.*}${UNIT}"
@@ -118,6 +120,27 @@ getunit()
 		esac            
 	done  
 	echo "$SIZE"
+}
+
+getunit2()
+{
+ 	SIZE="$1"
+ 	OSIZE="$1"
+ 	MAX="1024"
+ 	i=0
+	for UNIT in K M G T NULL ;do
+		SIZE=$((SIZE / MAX))
+		if [[ "$SIZE" -eq 0 ]] ; then
+			SIZE=$(echo "scale=2; $OSIZE / ($MAX ^ $i)" | bc)
+			if [[ "${SIZE#*.}" == 00 ]] ;then
+				SIZE="${SIZE%%.*}"
+			fi
+			break ;
+		fi
+		((i++))
+		PREVUNIT="$UNIT"
+	done  
+	echo "${SIZE}${PREVUNIT}"
 }
 
 # Simple yesno function returns 0 or 1
@@ -190,7 +213,7 @@ fsort_arrays()
 			eval echo -en "${COLUMN}@#@"
 		done
 		echo "" 
-	done | sort > "$TMPFILE"
+	done | sort -k1,1 | sed 's/#&#//g' > "$TMPFILE"
 	
 	# Copy internal arrays back to global arrays
 	for i in $(seq 1 $(( ${#@} )) ) ;do																		
@@ -217,7 +240,7 @@ getpoolcreds()
 				done
 			else
 				cecho "Warning: " red 
-				echo "Permissions allow other users to read $SCRIPTDIR/.xetoolsconfig" 
+				echo "Permissions allow other users to read $SCRIPTDIR/.XECONFIGS" 
 				echo "Please remove read permissions for other users and re-run program"
 				exit
 			fi
