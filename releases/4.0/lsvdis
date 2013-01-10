@@ -65,7 +65,7 @@ getvdidata()
 			fi
 		done
 		VDISIZES[$i]="${VDILINE%%,*}"     		
-		VDISIZES[$i]=$(getunit2 ${VDISIZES[$i]})
+		VDISIZES[$i]=$(getunit ${VDISIZES[$i]})
 		VMUUIDS[$i]="-" ; VMNAMES[$i]="-"
 		for VBDLINE in ${VBDLIST[@]} ;do
 			if [[ "$VBDLINE" == *${VDIUUIDS[$i]} ]] ;then
