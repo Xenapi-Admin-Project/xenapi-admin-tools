@@ -39,52 +39,6 @@ syntax()
         exit
 }
 
-getvdidata()
-{
-	# optimizations are needed
-	# getunit takes 7 seconds
-	# vdi-param-get takes 11 seconds
-	# vbd-list takes 15 seconds
-	# Get list of VBDs and loop through it to get VDIs and SRs. Use BASH pattern matching to assign each array item
-	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
-	IFS=$'\n'
-	VDILIST=( $(xe vdi-list params=uuid,name-label,sr-uuid,sr-name-label,virtual-size | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{4\}[^,]*\),/\1\n/g') )
-	VBDLIST=( $(xe vbd-list currently-attached=false params=vm-uuid,vm-name-label,vdi-uuid | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g') )
-	DEVLIST=( $(xe vbd-list params=vm-uuid,userdevice | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g') )
-	SRLIST=( $(xe sr-list params=uuid,type | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g') )
-	i=0
-	for VDILINE in ${VDILIST[@]} ;do
-		# Use BASH string operators to get the each field subtracting it from the LINE.
-		VDIUUIDS[$i]="${VDILINE%%,*}" 			;VDILINE="${VDILINE#*,}"
-		VDINAMES[$i]="${VDILINE%%,*}" 			;VDILINE="${VDILINE#*,}"
-		SRUUIDS[$i]="${VDILINE%%,*}"     		;VDILINE="${VDILINE#*,}"
-		SRNAMES[$i]="${VDILINE%%,*}"     		;VDILINE="${VDILINE#*,}"
-		for SRLINE in ${SRLIST[@]} ;do
-			if [[ "$SRLINE" =~ ${SRUUIDS[$i]}* ]] ;then
-				SRTYPES[$i]="${SRLINE#*,}"
-			fi
-		done
-		VDISIZES[$i]="${VDILINE%%,*}"     		
-		VDISIZES[$i]=$(getunit ${VDISIZES[$i]})
-		VMUUIDS[$i]="-" ; VMNAMES[$i]="-"
-		for VBDLINE in ${VBDLIST[@]} ;do
-			if [[ "$VBDLINE" == *${VDIUUIDS[$i]} ]] ;then
-				VMUUIDS[$i]="${VBDLINE%%,*}" 			;VBDLINE="${VBDLINE#*,}"
-				VMNAMES[$i]="${VBDLINE%%,*}" 			;VBDLINE="${VBDLINE#*,}"
-			fi
-		done
-		VMDEVS[$i]='-'
-		if [[ "${VMUUIDS[$i]}" != '-' ]] ;then
-			for DEVLINE in ${DEVLIST[@]} ;do
-				if [[ "$DEVLINE" == ${VMUUIDS[$i]}* ]] ;then
-					VMDEVS[$i]="${DEVLINE#*,}"
-				fi
-			done
-		fi
-		(( i++ ))
-	done
-}
-
 setup 
 while getopts :dcubnmhw:s:o:p: opt ;do
         case $opt in
