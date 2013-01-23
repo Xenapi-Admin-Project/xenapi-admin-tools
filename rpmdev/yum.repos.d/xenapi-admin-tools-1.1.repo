@@ -1,5 +1,5 @@
 [xenapi-admin-tools]
 name=XCP-$releasever - Xenapi Admin Tools
-baseurl=https://github.com/Xenapi-Admin-Project/xenapi-admin-tools/tree/master/repo/xcp/1.1/
+baseurl=https://github.com/Xenapi-Admin-Project/xenapi-admin-tools/raw/master/repo/xcp/1.1/
 gpgcheck=1
 

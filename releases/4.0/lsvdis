@@ -2,6 +2,7 @@
 
 # Shows virtual disk information
 # Authors: Lisa Nguyen (ltn821@hotmail.com), Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
 # Date: 9/10/2012 
 # Version: 0.6
 # Rewrote to xenapi admin tools 4.0 spec
