@@ -1,5 +1,7 @@
-[xenapi-admin-tools]
-name=XCP-$releasever - Xenapi Admin Tools
-baseurl=https://github.com/Xenapi-Admin-Project/xenapi-admin-tools/raw/master/repo/xcp/1.6/
+[xap]
+name=Xenapi Admin Project
+baseurl=http://xenapiadmin.com/repo/xcp/1.6/
+enabled=1
 gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-xap
 

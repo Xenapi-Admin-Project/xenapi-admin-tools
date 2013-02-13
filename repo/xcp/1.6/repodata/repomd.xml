@@ -3,19 +3,19 @@
   <data type="other">
     <location href="repodata/other.xml.gz"/>
     <checksum type="sha">fa2cd28c21e6a6fcac23ebff54f13cc9a7de3df1</checksum>
-    <timestamp>1358971741</timestamp>
+    <timestamp>1359044961</timestamp>
     <open-checksum type="sha">c22342924963426ba46311db062a88ff65853c23</open-checksum>
   </data>
   <data type="filelists">
     <location href="repodata/filelists.xml.gz"/>
     <checksum type="sha">89ef6daa0ff0fc870c0a8b71f71b8784ff3fd241</checksum>
-    <timestamp>1358971741</timestamp>
+    <timestamp>1359044961</timestamp>
     <open-checksum type="sha">52a60b375c9424f47361211fc7b77c85884e98a6</open-checksum>
   </data>
   <data type="primary">
     <location href="repodata/primary.xml.gz"/>
     <checksum type="sha">cd17b80c5e20dedce71be8e1bacb45273efcca48</checksum>
-    <timestamp>1358971741</timestamp>
+    <timestamp>1359044961</timestamp>
     <open-checksum type="sha">b0c8b90019727fa5affcf668c7f0691213833aea</open-checksum>
   </data>
 </repomd>

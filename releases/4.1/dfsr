@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# Shows storage repository size
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: July 25, 2012
+# Version: 0.6
+# Date: Sept 14, 2012
+# Rewrote using getcolwidth, printspaces and sort_srnames
+# Version: 0.7
+# Date: Sept 15, 2012
+# Moved to MODE= to allow for future expansion
+# Version: 0.8
+# Date: Jan 21, 2013
+# Rewrote to Xenapi Admin Tools spec 4.1
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/xaptools.lib" 
+	setcolors	
+	DEFSPACE="10"
+	MINSPACE="$DEFSPACE"
+	MODE="name"
+	VERSION="0.8"
+}
+
+syntax()
+{
+        echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-h - this help text"
+        echo "-c - output comma seperated values"
+        echo "-u - show UUIDs"
+        echo "-n - show Names (default)"
+        echo "-s <host> - remote poolmaster host"
+        echo "-p <password> - remote poolmaster password"
+        echo "-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+setup 
+while getopts :dcubnmhw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                n) MODE="name" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Set Title array depending on MODE
+case "$MODE" in
+	"uuid") TITLES=( 'Storage Repository UUID' 'Size' 'Used' 'Avail' 'Full%' 'SR Type') ;;
+	"name") TITLES=( 'Storage Repository' 'Size' 'Used' 'Avail' 'Full%' 'SR Type') ;;
+esac
+
+getcmddata sr-list params=uuid,name-label,type,physical-utilisation,physical-size
+
+IFS=$'\n'
+for i in $(seq 0 $(( ${#sr_uuid[@]} - 1 )) ) ;do
+	if [[ "${sr_physical_utilisation[$i]}" = '-1' || "${sr_physical_size[$i]}" = '-1' ]] ; then
+		sr_physical_utilisation[$i]=0 ; sr_physical_size[$i]=0
+	fi
+	if [[ "${sr_physical_utilisation[$i]}" -gt 0 ]] ;then
+		sr_percent[$i]=$(echo "scale=2; ${sr_physical_utilisation[$i]} / ${sr_physical_size[$i]} * 100" | bc | sed s/\\.[0-9]\\+//)
+	else
+		sr_percent[$i]="100"	
+	fi
+	sr_total[$i]=$(getunit "${sr_physical_size[$i]}")
+	sr_used_size[$i]=$(getunit "${sr_physical_utilisation[$i]}")
+	TEMPSIZE=$(( ${sr_physical_size[$i]} - ${sr_physical_utilisation[$i]} ))
+	sr_free[$i]=$(getunit "$TEMPSIZE")
+done
+fsort_arrays sr_name_label sr_uuid sr_type sr_physical_utilisation sr_physical_size sr_total sr_free sr_percent sr_used_size
+
+
+# Get COLLONGEST depending on MODE
+case "$MODE" in
+	"uuid") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${sr_uuid[@]}") ;;
+	"name") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${sr_name_label[@]}") ;;
+esac
+COLLONGEST[1]="4"
+COLLONGEST[2]="4"
+COLLONGEST[3]="4"
+COLLONGEST[4]="4"
+COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${sr_type[@]}")
+
+printheadings
+for i in $(seq 0 $(( ${#sr_uuid[@]} - 1 )) ) ;do	
+    case "$MODE" in
+		"uuid") cecho "${sr_uuid[$i]}" cyan ; printspaces "${COLLONGEST[0]}" "${#sr_uuid[$i]}"  ;;
+		"name") txt="${sr_name_label[$i]}" ; cecho "${txt}" cyan ; printspaces "${COLLONGEST[0]}" "${#txt}"  ;;
+	esac    
+    cecho "${sr_total[$i]}" 	blue ; printspaces "${COLLONGEST[1]}" "${#sr_total[$i]}" 
+    cecho "${sr_used_size[$i]}" blue ; printspaces "${COLLONGEST[2]}" "${#sr_used_size[$i]}" 
+    cecho "${sr_free[$i]}" 		blue ; printspaces "${COLLONGEST[3]}" "${#sr_free[$i]}" 
+    cecho "${sr_percent[$i]}" 	blue ; printspaces "${COLLONGEST[4]}" "${#sr_percent[$i]}" 
+    cecho "${sr_type[$i]}" 		blue ; printspaces "${COLLONGEST[5]}" "${#sr_type[$i]}" 
+	echo ""
+done
+

@@ -1,0 +1,382 @@
+#!/bin/bash
+
+# Version 4.1
+
+#give names to ansi sequences
+setcolors()
+{
+	black='\e[30;47m'
+	white='\e[37;47m'
+    red='\e[0;31m'
+    RED='\e[1;31m'
+    blue='\e[0;34m'
+    BLUE='\e[1;34m'
+    cyan='\e[0;36m'
+    CYAN='\e[1;36m'
+    off='\e[0m'
+}
+
+#color echo
+cecho ()                     
+{
+	MSG="${1}"  
+	if [[ "$CSV" = "yes" ]] ;then 
+	  	echo -ne "$MSG"
+	else    
+		if [ -z $2 ] ;then
+			color="off"
+		else
+			eval color=\$$2
+		fi     
+		echo -ne "${color}"
+		echo -ne "$MSG"
+		echo -ne "${off}"
+	fi                      
+}
+
+printspaces()
+{
+	# arg 1 - the longest item in the column (integer)
+	# arg 2 - the length of the item ie. ${#VAR} (integer)
+	COLUMN="$1"
+	ITEM="$2"
+	
+	if [[ "$CSV" = "yes" ]] ;then
+		echo -ne ","
+	else
+		printf "%*s" "$(( $COLUMN + $MINSPACE - $ITEM ))"
+	fi 
+}
+
+#get width of columns
+getcolwidth()
+{
+	#get longest item in array
+	array=( "$@" )
+	i=0
+	LONGEST="0"
+	IFS=$'\n'
+	for ITEM in ${array[@]} ;do
+		if [[ "${#ITEM}" -gt "$LONGEST" ]] ;then
+			LONGEST="${#ITEM}"
+		fi
+	done
+	echo "$LONGEST"
+	
+}
+
+# Print column headings
+printheadings()
+{
+	TITLEMAX=$(( ${#TITLES[@]} - 1 ))
+	for i in $(seq 0 "$TITLEMAX" ) ;do
+		cecho "${TITLES[$i]}" off
+		if [[ ! "$i" -eq "$TITLEMAX" ]] ;then
+			printspaces "${COLLONGEST[$i]}"  "${#TITLES[$i]}" 	
+		fi
+	done
+	echo ""
+}
+
+# Check if argument is a number
+isnumber()
+{
+	case "$1" in
+		''|*[!0-9]*) return 1 ;;
+		*) return 0 ;;
+	esac	
+}	
+
+# Check if argument is a UUID
+isuuid()
+{
+	if [[ "$1" =~ "[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}" ]] ; then
+		return 0
+	else
+		return 1
+	fi	
+}
+
+# Convert number to human readable size
+getunit()
+{
+ 	SIZE="$1"
+ 	OSIZE="$1"
+ 	MAX="1024"
+ 	i=0
+	for UNIT in K M G T NULL ;do
+		SIZE=$((SIZE / MAX))
+		if [[ "$SIZE" -eq 0 ]] ; then
+			SIZE=$(echo "scale=2; $OSIZE / ($MAX ^ $i)" | bc)
+			if [[ "${SIZE#*.}" == 00 ]] ;then
+				SIZE="${SIZE%%.*}"
+			fi
+			break ;
+		fi
+		((i++))
+		PREVUNIT="$UNIT"
+	done  
+	echo "${SIZE}${PREVUNIT}"
+}
+
+# Simple yesno function returns 0 or 1
+yesno()
+{
+	echo -n "$1? <y|n> "
+	read ANS
+	while true ;do
+		case $ANS in
+			[yY] | [yY][Ee][Ss] ) return 0 ;;
+			[nN] | [n|N][O|o] )   return 1 ;;
+			*) echo "Invalid input"        ;;
+		esac
+	done
+}
+
+# Sort parallel arrays. Sort order defined by first array. Pass array name only eg sort_arrays array1
+sort_arrays()
+{
+	IFS=$'\n'
+	
+	# Get all arrays and assign the values to local variables
+	# Assign variable names to TMPARR and TMPARG before you do any real value assignements
+	for i in $(seq 1 ${#@}) ;do
+		local TMPARR="ARRAY${i}"										# $TMPARR = 'ARRAY1' literally
+		eval local TMPARG="\$${i}"										# $TMPARG = '$ar1' literally, $ar1 is $1 
+		eval local ${TMPARR}=\( \"\$\{$TMPARG\[@\]\}\" \)				# ARRAY1 = $ar1
+	done
+
+	# Sort ARRAY1 and do identical operations for the other arrays
+	for (( MAX=${#ARRAY1[@]} - 1 ; MAX > 0 ; MAX-- )) ;do				# Bubble sort 
+		for (( i = 0 ; i < MAX ; i++ )) ;do
+			local j=$((i + 1))
+			if expr "${ARRAY1[$i]}" \> "${ARRAY1[$j]}" >/dev/null ;then # expr sorts ARRAY1 items properly
+				for (( k=${#@} ; k > 0 ; k-- )) ;do						# if [[ $1 > $2 ]] put upper case first
+					local EARG="ARRAY${k}"								# $EARG = 'ARRAY1' or 'ARRAY2' literally
+					eval local t=\"\$\{$EARG\[$i\]\}\"					# t = $ARRAY1[1] etc
+					eval $EARG\[$i\]=\"\$\{$EARG\[$j\]\}\"				# ARRAY1[1] = ${ARRAY1[2]} 
+					eval $EARG\[$j\]=\"$t\"								# ARRAY1[2] = $t - old value of ARRAY1[1]
+				done
+            fi
+        done
+    done
+
+	# Copy data from local arrays back to original arrays
+	for i in $(seq 1 ${#@}) ;do											# for 1 in # of arguments
+		local TMPARR="ARRAY${i}"											# TMPARR = 'ARRAY1' literally
+		eval local TMPARG="\$${i}"										# $TMPARG = '$ar1' literally, $ar1 is $1 
+		eval ${TMPARG}=\( \"\$\{$TMPARR\[\@\]\}\" \)					# ar1[@] = $ARRAY1[@]
+	done
+}	
+
+# Fast sort arrays using sort command and a temporary file
+fsort_arrays()
+{
+	TMPFILE=$(mktemp)
+	IFS=$'\n'
+	# Copy argument arrays to internal arrays
+	for i in $(seq 1 ${#@}) ;do
+		local TMPARR="ARRAY${i}"										
+		eval local TMPARG="\$${i}"										
+		eval local ${TMPARR}=\( \"\$\{$TMPARG\[@\]\}\" \)				
+	done
+
+	# Sort using the sort command
+	for i in $(seq 0 $(( ${#ARRAY1[@]} - 1 )) ) ;do
+		for j in $(seq 1 ${#@}) ;do
+			local COLUMNTMP="ARRAY${j}"
+			eval local COLUMN=\"\$\{$COLUMNTMP\[\$\i\]\}\"
+			eval echo -en "${COLUMN}@#@"
+		done
+		echo "" 
+	done | sort -k1,1 | sed 's/#&#//g' > "$TMPFILE"
+	
+	# Copy internal arrays back to global arrays
+	for i in $(seq 1 $(( ${#@} )) ) ;do																		
+		eval local TMPARG="\$${i}"											
+		TMPCOL=( $(awk -F"@#@" "{print \$${i}}" "$TMPFILE") )
+		eval ${TMPARG}=\( \${TMPCOL[@]} \)
+	done
+	rm -f "$TMPFILE"
+}
+
+# Set ${XE} variable to include server, username and password 
+getpoolcreds()
+{
+	# Check to see if there's a local config file 
+	# File format  POOLMASTER="hostname" \n PORT="port" \n USERNAME="username" \n PASSWORD="password"
+	if [[ "$REMOTE" = "yes" ]] ;then
+		if [[ -d "$SCRIPTDIR/.XECONFIGS" ]] ;then
+			PERMS=$(stat -c '%a' "$SCRIPTDIR/.XECONFIGS")
+			if [[ "$PERMS" =~ "[5-7]00" ]] ;then
+				select POOLHOST in $(awk -F= '/POOLMASTER/{print $2}' $SCRIPTDIR/.XECONFIG/*.cfg | sed 's/\"//g') ;do
+					XECONF=$(grep "$POOLHOST" $SCRIPTDIR/.XECONFIG/*.cfg | awk -F: '{print $1}')
+					source "$XECONF"
+					break ;
+				done
+			else
+				cecho "Warning: " red 
+				echo "Permissions allow other users to read $SCRIPTDIR/.XECONFIGS" 
+				echo "Please remove read permissions for other users and re-run program"
+				exit
+			fi
+		fi
+		if [[ -z "$POOLMASTER" ]] ;then
+			echo "Enter the remote poolmaster ip or hostname"
+			read -s POOLMASTER
+		fi
+		if [[ -z "$PORT" ]] ;then
+			echo "Enter the remote poolmaster port number [default 443]"
+			read -s PORT
+		fi
+		if [[ -z "$PASSWORD" ]] ;then
+			echo "Enter the remote poolmaster admin password"
+			read -s PASSWORD
+		fi
+		export XE_EXTRA_ARGS="server=${POOLMASTER},port=${PORT},username=${USERNAME},password=${PASSWORD}"
+	fi
+	
+}	
+
+# Show a select menu by passing multiple array NAMES and returns the UUID. Only pass ONE array holding UUID
+show_arraymenu()
+{
+	# Copy argument arrays to internal arrays
+	for i in $(seq 1 ${#@}) ;do
+		local TMPARR="ARRAY${i}"										
+		eval local TMPARG="\$${i}"										
+		eval local ${TMPARR}=\( \"\$\{$TMPARG\[@\]\}\" \)				
+	done
+
+	# get longest item in each array
+	for i in $(seq 1 ${#@}) ;do											
+		local COLARR="ARRAY${i}"	
+		local COLLONG[$i]=$(eval getcolwidth \$\{$COLARR\[@\]\} )
+	done
+
+	for i in $(seq 0 $(( ${#ARRAY1[@]} - 1 )) ) ;do
+		for j in $(seq 1 ${#@}) ;do
+			local COLUMNTMP="ARRAY${j}"
+			eval COLUMN=\$\{$COLUMNTMP\[\$\i\]\}
+			eval cecho "$COLUMN" cyan ;		printspaces "${COLLONG[$j]}" "${#COLUMN}"
+		done
+		echo "" 
+	done | sort > "$TMPDIR/tmpllist.txt"
+
+	local IFS=$'\n'
+	PS3="Please Choose: "
+	select LINE in $(cat "$TMPDIR/tmpllist.txt")
+	do
+		echo "$LINE" | egrep -o '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'
+		break ;
+	done
+}
+
+getcmddata()
+{
+	IFS=$'\n'
+	i=0
+	shopt -q -s extglob
+	# Array names are the object and parameter names with underscores replacing hyphens (variables can't have hypens)
+	# e.g. xe vdi params=name-label becomes ${vdi_name_label[$INDEX]}
+	PRE=${1%-*}
+	for LINE in $(xe $@ |  sed 'N; /^\(.*\)\n\1$/!P; D' | sed  's/^$/#@#/g') ;do
+		case $LINE in 
+			'#@#') 
+					((i++)) ;continue 
+			;;
+			*) 
+					VAR=${LINE%%\(*} ; VAR=${VAR##+([ ])} ; VAR=${VAR%%+([ ])} ; VAR=${PRE}_${VAR//-/_} 
+					eval $VAR\[$i\]=\"\${LINE#*: \}\"
+			;;
+		esac
+	done
+	shopt -q -u extglob
+}
+
+# Get host list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
+gethostdata()
+{
+	local IFS=$'\n'
+	local LIST=$(xe host-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g')
+	i=0
+	for LINE in $LIST ;do
+		HOSTUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		HOSTNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		(( i++ ))
+	done
+	sort_arrays HOSTNAMES HOSTUUIDS
+}
+
+# Get template list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
+gettemplatedata()
+{
+	local IFS=$'\n'
+	local LIST=$(xe template-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}'  | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g'  | sed 's/(/\\(/g' | sed 's/)/\\)/g')
+	i=0
+	for LINE in $LIST ;do
+		TMPLUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		TMPLNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		(( i++ ))
+	done
+	fsort_arrays TMPLNAMES TMPLUUIDS
+}
+
+getvmdata()
+{
+	gethostdata
+	# Get list of Virtual Machines and loop through it. Use BASH pattern matching to assign each array item
+	# The last sed replaces every 5th (4 + 1) occurance of a comma. Change the 4 if you have more than 5 columns of data
+	LIST=$(xe vm-list params=uuid,name-label,is-control-domain,power-state,resident-on,memory-actual,dom-id | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e 's/\(\([^,]*,\)\{6\}[^,]*\),/\1\n/g')
+	i=0
+	IFS=$'\n'
+	for LINE in $LIST ;do
+		# Use BASH string operators to get the each field subtracting it from the LINE.
+		VMUUIDS[$i]="${LINE%%,*}" 			;LINE="${LINE#*,}"
+		VMNAMES[$i]="${LINE%%,*}"     		;LINE="${LINE#*,}"
+		CONTROLDOMAIN[$i]="${LINE%%,*}"  	;LINE="${LINE#*,}"
+		if [[ "${CONTROLDOMAIN[$i]}" = "true" ]] ;then
+			unset VMUUIDS[$i] ; unset VMNAMES[$i] ; unset CONTROLDOMAIN[$i]
+			continue
+		fi
+		STATES[$i]="${LINE%%,*}"      		;LINE="${LINE#*,}"
+		VMHOSTUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		if [[ "${VMHOSTUUIDS[$i]}" = '<not in database>' ]] ;then
+			VMHOSTUUIDS[$i]="--" ; VMHOSTNAMES[$i]="--"
+		else
+			for j in $(seq 0 $(( ${#HOSTUUIDS[@]} - 1 )) ) ;do
+				if [[ "${VMHOSTUUIDS[$i]}" = "${HOSTUUIDS[$j]}" ]] ;then
+					VMHOSTNAMES[$i]="${HOSTNAMES[$j]}"
+				fi
+			done
+		fi
+		VMMEMACT[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		VMDOMID[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		if [[ "${VMDOMID[$i]}" = '-1' ]] ;then
+			VMDOMID[$i]="--" 
+		fi
+		(( i++ ))
+	done
+}
+
+
+# Get CPU core list and assign CPUUUIDS[] and CPUNUMS[] arrays
+getcpudata()
+{
+	local IFS=$'\n'
+	local LIST=$(xe host-cpu-list params=uuid,host-uuid,number | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g')
+	i=0
+	for LINE in $LIST ;do
+		CPUUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		CPUHOSTUUIDS[$i]="${LINE%%,*}" 	;LINE="${LINE#*,}"
+		CPUNUMS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
+		(( i++ ))
+	done
+	sort_arrays CPUUUDS CPUHOSTUUDS CPUNUMS
+}
+
+
+
+
+
+
