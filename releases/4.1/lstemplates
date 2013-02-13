@@ -1,0 +1,104 @@
+#!/bin/bash
+# Lists XCP/Xenserver templates
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.6
+# Date: June 27, 2012
+# Version: 0.7
+# Date: Sept 3, 2012
+# UUIDs didn't match up to sorted name-labels
+# Much slower now with internal bubble sort but it's correct
+# Version 0.8
+# Date: Sept 12, 2012
+# Replaced bubble sort with an outside file sorted using the sort command
+# execution time went from 4.2 seconds to 1.8.
+# changed getcolwidth to a function returning the longest length instead of setting COLLONGEST directly
+# Version 0.9
+# Date Sept 14, 2012
+# Added printspaces function and CSV support
+# Version 1.0
+# Date Nov 23, 2012
+# Converted to Xenapi Admin Tools 4.0
+
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/xaptools.lib" 
+	setcolors	
+	DEFSPACE="5"
+	MINSPACE="$DEFSPACE"
+	ORDER="name"
+	MODE="basic"
+	VERSION="1.0"
+}
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-c - output comma seperated values"
+        echo "-o <value> - changes sort order by column, value can be name or uuid"
+        echo "-s <host> - remote poolmaster host"
+        echo "-p <password> - remote poolmaster password"
+        echo "-v - verbose"
+        echo "-h - this help text"
+        echo "-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+
+
+
+
+
+setup 
+while getopts :dchvw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                o) ORDER="$OPTARG" ;;
+                v) MODE="verbose" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Set Title array 
+TITLES=( 'Name' 'UUID' )
+
+
+# Get template data and the length of each column
+gettemplatedata
+COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${TMPLNAMES[@]}")
+COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${TMPLUUIDS[@]}")
+
+
+# Print column headings and data columns
+printheadings
+
+
+if [[ "$MODE" = "verbose" ]] ;then
+	for i in $(seq 0 $(( ${#TMPLUUIDS[@]} - 1 )) ) ;do
+		txt="${TMPLNAMES[$i]}" ; cecho "${txt}" cyan  	;printspaces "${COLLONGEST[0]}" "${#txt}"
+		cecho "${TMPLUUIDS[$i]}" blue 		    		;printspaces "${COLLONGEST[1]}" "${#TMPLUUIDS[$i]}" 
+		echo ""
+		xe template-list uuid=${TMPLUUIDS[$i]} params=name-description --minimal
+		echo ""
+	done
+else
+	for i in $(seq 0 $(( ${#TMPLUUIDS[@]} - 1 )) ) ;do
+		txt="${TMPLNAMES[$i]}" ; cecho "${txt}" cyan 	;printspaces "${COLLONGEST[0]}" "${#txt}"
+		cecho "${TMPLUUIDS[$i]}" blue
+		echo ""
+	done
+fi
+

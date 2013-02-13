@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Shows network information
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: August 4, 2012
+# Version: 0.6
+# Date: August 12, 2012
+# Fixed but in vlan variables not resetting
+# Version: 0.7
+# Date: August 19, 2012
+# Changed wording for VM device
+# Version: 0.8
+# Date: September 14th, 2012
+# rewrote using getcolwidth, printspaces and sort_netnames
+# addes CSV output
+# Version: 0.9
+# Date: September 15th, 2012
+# Changed to MODE=uuid. This will allow for future modes.
+# Version: 1.0
+# Date: November 17th, 2012
+# Changed to Xenapi Admin Tools 4.0 optimizations
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/xaptools.lib" 
+	setcolors	
+	DEFSPACE="5"
+	MINSPACE="$DEFSPACE"
+	MODE="name"
+	VERSION="1.0"
+}
+
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "Syntax: $(basename $0) [options]"
+        echo "Options:"
+        echo "-d - shell debugging"
+        echo "-c - output comma seperated values"
+        echo "-u - shows Network UUID, Bridge, VLAN tag, VM UUID and device number"
+        echo "-n - shows Network Name, Bridge, VLAN tag, VM Name and device number"
+        echo "-s <host> - remote poolmaster host"
+        echo "-p <password> - remote poolmaster password"
+        echo "-h - this help text"
+        echo "-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+setup 
+while getopts :dcunhw:s:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                n) MODE="name" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Set TITLE array
+case "$MODE" in
+	"uuid") TITLES=( 'Network UUID' 'Bridge' 'VLAN UUID' 'Virtual Machine UUID' 'VM Device' ) ;;
+	"name") TITLES=( 'Network' 'Bridge' 'Vlan Tag' 'Virtual Machine' 'VM Device' ) ;;
+esac
+
+getnetdata
+fsort_arrays NETNAMES NETUUIDS BRIDGENAMES VLANNUMS VLANUUIDS
+
+# Get the length of each column and store it in COLLONGEST[]
+case "$MODE" in
+	"uuid") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${NETUUIDS[@]}")
+			COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${BRIDENAMES[@]}")
+			COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VLANUUIDS[@]}")
+			COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMUUIDS[@]}")
+	 ;;
+	"name") COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${NETNAMES[@]}")
+			COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${BRIDENAMES[@]}")
+			COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VLANNUMS[@]}")
+			COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMNAMES[@]}")
+	 ;;
+esac
+
+case "$MODE" in
+	"uuid") 
+			NET=(${NETUUIDS[@]})
+			VLAN=(${VMUUIDS[@]})
+	;;
+	"name") 
+			NET=(${NETNAMES[@]})
+			VLAN=(${VMNUMS[@]})
+	;;
+esac
+
+# Print column headings and data columns
+printheadings
+for i in $(seq 0 $(( ${#NETUUIDS[@]} - 1 )) ) ;do
+	cecho "${NET[$i]}" cyan 		; printspaces "${COLLONGEST[0]}" "${#NET[$i]}" 
+	cecho "${BRIDGENAMES[$i]}" blue ; printspaces "${COLLONGEST[1]}" "${#BRIDGENAMES[$i]}" 
+	cecho "${VLAN[$i]}" blue 		; printspaces "${COLLONGEST[2]}" "${#VLAN[$i]}" 
+
+	if [[ "${BRIDGENAMES[$i]}" == *xapi* ]] ;then
+			echo ""
+			continue
+	fi
+	
+	LIST=$(xe vif-list network-uuid=${NETUUIDS[$i]} params=vm-uuid,vm-name-label,device | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g')
+	i=0
+	for LINE in $LIST ;do
+		VMUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		VMNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		VMDEVNUMS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
+		if [[ -z ${VMUUIDS[$i]} && "$CSV" = "yes" ]] ;then
+			VMUUIDS[$i]=",,"
+		fi	
+		(( i++ ))
+	done
+	fsort_arrays VMNAMES VMUUIDS VMDEVNUMS
+	
+	for j in $(seq 0 $(( ${#VMUUIDS[@]} - 1 )) ) ;do
+		case "$MODE" in
+			"uuid") VM="${VMUUID[$j]}" ;;
+			"name") VM="${VMNAMES[$j]}" ;;
+		esac
+		
+		if [[ "$j" -eq "0" ]] ;then
+			cecho "${VM}"  blue ; printspaces "${COLLONGEST[3]}" "${#VM}" 
+			cecho "$VMDEVNUMS" blue
+		else
+			if [[ "$CSV" = "yes" ]] ;then
+				echo "" ; echo -ne ",,,"
+			else
+				COLSPACES=$(( ${COLLONGEST[0]} + $MINSPACE + ${COLLONGEST[1]} + $MINSPACE + ${COLLONGEST[2]} + $MINSPACE ))
+				echo "" ; printf "%*s" "$COLSPACES"
+			fi
+			cecho "${VM}" blue ; printspaces "${COLLONGEST[3]}" "${#VM}"
+			cecho "${VMDEVNUMS}" blue
+		fi
+		(( j++ ))
+	done
+	echo ""
+done
+

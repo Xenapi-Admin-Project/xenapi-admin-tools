@@ -1,16 +1,11 @@
 #!/bin/bash
-#!/bin/bash
 
 # Shows virtual disk information
 # Authors: Lisa Nguyen (ltn821@hotmail.com), Grant McWilliams (grantmcwilliams.com)
 # Version: 0.5
 # Date: 9/10/2012 
 # Version: 0.6
-# Date: 12/20/2012
 # Rewrote to xenapi admin tools 4.0 spec
-# Version: 0.7
-# Date: 01/21/13
-# Rewrote to xenapi admin tools 4.1 spec
 
 setup()
 {
@@ -21,7 +16,7 @@ setup()
 	MINSPACE="$DEFSPACE"
 	MODE="mixed"
 	ORDER="vdi"
-	VERSION="0.7"
+	VERSION="0.6"
 }
 
 syntax()
@@ -44,37 +39,6 @@ syntax()
         exit
 }
 
-getvdidata()
-{
-	getcmddata vdi-list params=uuid,name-label,sr-uuid,sr-name-label,virtual-size
-	getcmddata vbd-list currently-attached=false params=uuid,vm-uuid,vm-name-label,vdi-uuid,userdevice
-	getcmddata sr-list params=uuid,type
-
-	IFS=$'\n'
-	for i in $(seq 0 $(( ${#vdi_uuid[@]} - 1 )) ) ;do
-		for j in $(seq 0 $(( ${#sr_uuid[@]} - 1 )) ) ;do
-			case "${sr_uuid[$j]}" in
-				"${vdi_sr_uuid[$i]}") vdi_sr_type[$i]="${sr_type[$j]}" ;break ;;
-				*) vdi_sr_type[$i]="-" ;;
-			esac
-		done
-		for j in $(seq 0 $(( ${#vbd_uuid[@]} - 1 )) ) ;do
-			case "${vbd_vdi_uuid[$j]}" in 
-				"${vdi_uuid[$i]}" )
-					vdi_vm_uuid[$i]="${vbd_vm_uuid[$j]}"
-					vdi_vm_name_label[$i]="${vbd_vm_name_label[$j]}"
-					vdi_userdevice[$i]="${vbd_userdevice[$j]}"
-					break
-				;;
-				*)  vdi_vm_uuid[$i]="-"
-					vdi_vm_name_label[$i]="-"
-					vdi_userdevice[$i]="-"
-				;;
-			esac
-		done
-		vdi_virtual_size[$i]=$(getunit ${vdi_virtual_size[$i]})
-	done
-}
 
 setup 
 while getopts :dcubnmhw:s:o:p: opt ;do
@@ -94,71 +58,86 @@ while getopts :dcubnmhw:s:o:p: opt ;do
 done
 shift $(($OPTIND - 1))
 getpoolcreds
-getvdidata
 
-case "$ORDER" in 
-	"vdi")    	fsort_arrays vdi_uuid vdi_name_label vdi_sr_uuid vdi_sr_name_label vdi_sr_type vdi_virtual_size vdi_vm_uuid vdi_vm_name_label vdi_userdevice ;;
-	"size")   	fsort_arrays vdi_virtual_size vdi_uuid vdi_name_label vdi_sr_uuid vdi_sr_name_label vdi_sr_type  vdi_vm_uuid vdi_vm_name_label vdi_userdevice ;;
-	"sr") 		fsort_arrays vdi_sr_uuid vdi_virtual_size vdi_uuid vdi_name_label vdi_sr_name_label vdi_sr_type  vdi_vm_uuid vdi_vm_name_label vdi_userdevice ;;
-	"vm") 		fsort_arrays vdi_vm_uuid vdi_sr_uuid vdi_virtual_size vdi_uuid vdi_name_label vdi_sr_name_label vdi_sr_type vdi_vm_name_label vdi_userdevice ;;
-	"device") 	fsort_arrays vdi_userdevice vdi_vm_uuid vdi_sr_uuid vdi_virtual_size vdi_uuid vdi_name_label vdi_sr_name_label vdi_sr_type vdi_vm_name_label ;;
-esac
+# Populate arrays for VM UUIDs, VM name-label, power state, Host Name and Host UUID
+getvdidata
 
 case "$MODE" in
 	"uuid")   
 		TITLES=( 'VDI UUID' 'Size' 'SR UUID' 'Type' 'VM UUID' 'Dev' ) 
-		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${vdi_uuid[@]}")
-		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${vdi_virtual_size[@]}")
-		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${vdi_sr_uuid[@]}")
-		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${vdi_sr_type[@]}")
-		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${vdi_vm_uuid[@]}")
-		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${vdi_userdevice[@]}")
+		case "$ORDER" in 
+			"vdi")    	fsort_arrays VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"size")   	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS ;;
+			"sr") 		fsort_arrays SRUUIDS SRNAMES VDIUUIDS VDINAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMUUIDS VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDIUUIDS[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRUUIDS[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMUUIDS[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
 	;;
    "mixed")   
 		TITLES=( 'VDI UUID' 'Size' 'SR Name' 'SR Type' 'VM Name' 'Dev' ) 
-		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${vdi_uuid[@]}")
-		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${vdi_virtual_size[@]}")
-		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${vdi_sr_name_label[@]}")
-		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${vdi_sr_type[@]}")
-		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${vdi_vm_name_label[@]}")
-		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${vdi_userdevice[@]}")
+		case "$ORDER" in 
+			"vdi")   	fsort_arrays VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS  ;;
+			"size")   	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS  ;;
+			"sr") 		fsort_arrays SRNAMES VDIUUIDS VDINAMES SRUUIDS  SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS  VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES  ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDIUUIDS[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRNAMES[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMNAMES[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
 	;;
 	"name")   
 		TITLES=( 'VDI Name' 'Size' 'SR Name' 'SR Type' 'VM Name' 'Dev' ) 
-		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${vdi_uuid[@]}")
-		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${vdi_virtual_size[@]}")
-		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${vdi_sr_name_label[@]}")
-		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${vdi_sr_type[@]}")
-		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${vdi_vm_name_label[@]}")
-		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${vdi_userdevice[@]}")
+		case "$ORDER" in 
+			"vdi")    	fsort_arrays VDINAMES VDIUUIDS SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS  ;;
+			"size")  	fsort_arrays VDISIZES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VMUUIDS VMNAMES VMDEVS  ;;
+			"sr") 		fsort_arrays SRNAMES VDIUUIDS VDINAMES SRUUIDS  SRTYPES VDISIZES VMUUIDS VMNAMES VMDEVS ;;
+			"vm") 		fsort_arrays VMNAMES VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS  VMDEVS ;;
+			"device") 	fsort_arrays VMDEVS VDIUUIDS VDINAMES SRUUIDS SRNAMES SRTYPES VDISIZES VMUUIDS VMNAMES  ;;
+		esac
+		COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VDINAMES[@]}")
+		COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${VDISIZES[@]}")
+		COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${SRNAMES[@]}")
+		COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${SRTYPES[@]}")
+		COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMNAMES[@]}")
+		COLLONGEST[5]=$(getcolwidth "${TITLES[5]}" "${VMDEVS[@]}")
 	;;
 esac
 
 
 # Print column headings and data columns
 printheadings
-for i in $(seq 0 $(( ${#vdi_uuid[@]} - 1 )) ) ;do
+for i in $(seq 0 $(( ${#VDIUUIDS[@]} - 1 )) ) ;do
 	case "$MODE" in
-		"uuid")  cecho "${vdi_uuid[$i]}" cyan 			;printspaces "${COLLONGEST[0]}" "${#vdi_uuid[$i]}" 
-				 cecho "${vdi_virtual_size[$i]}" cyan   ;printspaces "${COLLONGEST[1]}" "${#vdi_virtual_size[$i]}" 
-				 cecho "${vdi_sr_uuid[$i]}" cyan      	;printspaces "${COLLONGEST[2]}" "${#vdi_sr_uuid[$i]}" 
-				 cecho "${vdi_sr_type[$i]}" cyan      	;printspaces "${COLLONGEST[3]}" "${#vdi_sr_type[$i]}" 
-				 cecho "${vdi_vm_uuid[$i]}" cyan      	;printspaces "${COLLONGEST[4]}" "${#vdi_vm_uuid[$i]}" 
-				 cecho "${vdi_userdevice[$i]}" cyan
+		"uuid")  cecho "${VDIUUIDS[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDIUUIDS[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRUUIDS[$i]}"  cyan      	;printspaces "${COLLONGEST[2]}" "${#SRUUIDS[$i]}" 
+				 cecho "${SRTYPES[$i]}"  cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMUUIDS[$i]}"  cyan      	;printspaces "${COLLONGEST[4]}" "${#VMUUIDS[$i]}" 
+				 cecho "${VMDEVS[$i]}"   cyan
 		;;
-		"mixed") cecho "${vdi_uuid[$i]}" cyan 			;printspaces "${COLLONGEST[0]}" "${#vdi_uuid[$i]}" 
-				 cecho "${vdi_virtual_size[$i]}" cyan   ;printspaces "${COLLONGEST[1]}" "${#vdi_virtual_size[$i]}" 
-				 cecho "${vdi_sr_name_label[$i]}"  cyan ;printspaces "${COLLONGEST[2]}" "${#vdi_sr_name_label[$i]}" 
-				 cecho "${vdi_sr_type[$i]}"  cyan      	;printspaces "${COLLONGEST[3]}" "${#vdi_sr_type[$i]}" 
-				 cecho "${vdi_vm_name_label[$i]}"  cyan ;printspaces "${COLLONGEST[4]}" "${#vdi_vm_name_label[$i]}" 
-				 cecho "${vdi_userdevice[$i]}"   cyan
+		"mixed") cecho "${VDIUUIDS[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDIUUIDS[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRNAMES[$i]}"  cyan      	;printspaces "${COLLONGEST[2]}" "${#SRNAMES[$i]}" 
+				 cecho "${SRTYPES[$i]}"  cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMNAMES[$i]}"  cyan      	;printspaces "${COLLONGEST[4]}" "${#VMNAMES[$i]}" 
+				 cecho "${VMDEVS[$i]}"   cyan
 		;;
-		"name")  cecho "${vdi_name_label[$i]}" cyan 	;printspaces "${COLLONGEST[0]}" "${#vdi_name_label[$i]}" 
-				 cecho "${vdi_virtual_size[$i]}" cyan   ;printspaces "${COLLONGEST[1]}" "${#vdi_virtual_size[$i]}" 
-				 cecho "${vdi_sr_name_label[$i]}"  cyan ;printspaces "${COLLONGEST[2]}" "${#vdi_sr_name_label[$i]}" 
-				 cecho "${vdi_sr_type[$i]}"  cyan      	;printspaces "${COLLONGEST[3]}" "${#vdi_sr_type[$i]}" 
-				 cecho "${vdi_vm_name_label[$i]}"  cyan ;printspaces "${COLLONGEST[4]}" "${#vdi_vm_name_label[$i]}" 
-				 cecho "${vdi_userdevice[$i]}"  cyan
+		"name")  cecho "${VDINAMES[$i]}" cyan 		;printspaces "${COLLONGEST[0]}" "${#VDINAMES[$i]}" 
+				 cecho "${VDISIZES[$i]}" cyan      	;printspaces "${COLLONGEST[1]}" "${#VDISIZES[$i]}" 
+				 cecho "${SRNAMES[$i]}"  cyan      	;printspaces "${COLLONGEST[2]}" "${#SRNAMES[$i]}" 
+				 cecho "${SRTYPES[$i]}"  cyan      	;printspaces "${COLLONGEST[3]}" "${#SRTYPES[$i]}" 
+				 cecho "${VMNAMES[$i]}"  cyan      	;printspaces "${COLLONGEST[4]}" "${#VMNAMES[$i]}" 
+				 cecho "${VMDEVS[$i]}"   cyan
 		;;
 	esac  
 	echo ""   

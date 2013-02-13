@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Changelog
+# Lists XCP/Xenserver Virtual Machines one per line with uuid and host
+# Author: Grant McWilliams (grantmcwilliams.com)
+# Version: 0.5
+# Date: June 27, 2012
+# Version: 0.6
+# Date: Sept 15, 2012
+# Complete rewrite using printspaces, sort_vmnames and getcolwidth
+# Now provides four output MODES - name, uuid. mixed and both
+# Also provides CSV output
+# Version: 0.7
+# Date: Oct 14, 2012
+# Changed to XCP Tools 3.0 spec. Generic sort_arrays, xe remote with get_poolcred, removed IFS changes.
+# Added whitespace commandline parameter. Cleaned up csv output for Windows terminals. Added sort order on column
+# Version: 0.8
+# Date: Nov 14, 2012
+# Chanted to XCP tools 4.0 spec. fsort_arrays...
+# Version: 0.8.1
+# Date: Nov 20, 2012
+# Fixed Unicode issues for names
+# Version: 0.8.2
+# Date: Nov 28, 2012
+# Control domain was showing up if it sorted last. Fixed VMHOSTNAME/VMHOSTUUID null assignment bug
+
+setup()
+{
+	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
+	source "$SCRIPTDIR/xaptools.lib" 
+	setcolors	
+	DEFSPACE="5"
+	MINSPACE="$DEFSPACE"
+	MODE="mixed"
+	VERSION="0.8.2"
+	ORDER="vmname"
+}
+
+
+syntax()
+{
+		echo "$(basename $0) $VERSION"
+        echo ""
+        echo "	Syntax: $(basename $0) [options]"
+        echo "	Options:"
+        echo "	-d - shell debugging"
+        echo "	-c - output comma seperated values"
+        echo "	-u - shows VM UUID, Status, Host UUID"
+        echo "	-b - shows VM Name, Status, VMUUID, Host Name and Host UUID"
+        echo "	-n - shows VM Name, Status and Hostname"
+        echo "	-m - shows VM Name, Status, VM UUID and Hostname"
+        echo "	-o <value> - changes sort order by column, value can be vmname, hostname, vmuuid, hostuud"
+        echo "	-s <host> - remote poolmaster host"
+        echo "	-p <password> - remote poolmaster password"
+        echo "	-h - this help text"
+        echo "	-w - number of whitespaces between columns"
+        echo ""
+        exit
+}
+
+setup 
+while getopts :dcubnmhw:s:o:p: opt ;do
+        case $opt in
+                d) set -x ;;
+                h) syntax ;;
+                c) CSV="yes" ;;
+                u) MODE="uuid" ;;
+                b) MODE="both" ;;
+                n) MODE="name" ;;
+                m) MODE="mixed" ;;
+                o) ORDER="$OPTARG" ;;
+                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                p) PASSWORD="$OPTARG" ;;
+                w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
+                \?) echo "Unknown option"; syntax ;;
+        esac
+done
+shift $(($OPTIND - 1))
+getpoolcreds
+
+# Populate arrays for VM UUIDs, VM name-label, power state, Host Name and Host UUID
+getvmdata
+
+# Sort data arrays
+case "$ORDER" in 
+	  "vmname") fsort_arrays VMNAMES VMUUIDS STATES VMHOSTUUIDS VMHOSTNAMES CONTROLDOMAIN VMDOMID  ;;
+	"hostname") fsort_arrays VMHOSTNAMES VMNAMES VMUUIDS STATES VMHOSTUUIDS CONTROLDOMAIN VMDOMID  ;;
+	  "vmuuid") fsort_arrays VMUUIDS VMHOSTUUIDS VMHOSTNAMES VMNAMES  STATES CONTROLDOMAIN VMDOMID ;;
+	"hostuuid") fsort_arrays VMHOSTUUIDS VMHOSTNAMES VMNAMES VMUUIDS STATES CONTROLDOMAIN VMDOMID  ;;
+esac
+
+# Get the length of each column and store it in COLLONGEST[]
+case "$MODE" in
+	"uuid") 	TITLES=( 'VM UUID' 'Status' 'Host UUID' 'Dom ID' )
+				COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMUUIDS[@]}")
+				COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+				COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMHOSTUUIDS[@]}")
+				COLLONGEST[3]=$(getcolwidth "${TITLES[3}"  "${VMDOMID[@]}")
+	 ;;
+	"name") 	TITLES=( 'VM Name' 'Status' 'Host Name' 'Dom ID' )
+				COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+				COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+				COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMHOSTNAMES[@]}")
+				COLLONGEST[3]=$(getcolwidth "${TITLES[3}"  "${VMDOMID[@]}")
+	 ;;
+	"mixed") 	TITLES=( 'VM Name' 'Status' 'VM UUID' 'Host Name' 'Dom ID' )
+				COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+				COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+				COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMUUIDS[@]}")
+				COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMHOSTNAMES[@]}")
+				COLLONGEST[4]=$(getcolwidth "${TITLES[4]}"  "${VMDOMID[@]}")
+	 ;;
+	 "both") 	TITLES=( 'VM Name' 'Status' 'VM UUID' 'Host Name' 'Host UUID' 'Dom ID' )
+				COLLONGEST[0]=$(getcolwidth "${TITLES[0]}" "${VMNAMES[@]}")
+				COLLONGEST[1]=$(getcolwidth "${TITLES[1]}" "${STATES[@]}")
+				COLLONGEST[2]=$(getcolwidth "${TITLES[2]}" "${VMUUIDS[@]}")
+				COLLONGEST[3]=$(getcolwidth "${TITLES[3]}" "${VMHOSTNAMES[@]}")
+				COLLONGEST[4]=$(getcolwidth "${TITLES[4]}" "${VMHOSTUUIDS[@]}")
+				COLLONGEST[5]=$(getcolwidth "${TITLES[5}"  "${VMDOMID[@]}")
+	 ;;
+esac
+
+
+# Print column headings and data columns
+printheadings
+for i in $(seq 0 $(( ${#VMUUIDS[@]} - 1 )) ) ;do
+	case "$MODE" in
+		"uuid")  cecho "${VMUUIDS[$i]}" 	cyan 			;printspaces "${COLLONGEST[0]}" "${#VMUUIDS[$i]}" 
+				 cecho "${STATES[$i]}"		red      		;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMHOSTUUIDS[$i]}" blue      		;printspaces "${COLLONGEST[2]}" "${#VMHOSTUUIDS[$i]}" 
+				 cecho "${VMDOMID[$i]}" 	blue
+		;;
+		"name")  txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" 		red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMHOSTNAMES[$i]}" blue 			;printspaces "${COLLONGEST[2]}" "${#VMHOSTNAMES[$i]}" 
+				 cecho "${VMDOMID[$i]}"		blue
+		;;
+		"mixed") txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" 		red				;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" 	blue 			;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+				 cecho "${VMHOSTNAMES[$i]}" blue 			;printspaces "${COLLONGEST[3]}" "${#VMHOSTNAMES[$i]}"
+				 cecho "${VMDOMID[$i]}" 	blue 
+		;;
+		"both")  txt="${VMNAMES[$i]}" ; cecho "${txt}" cyan ;printspaces "${COLLONGEST[0]}" "${#txt}"
+				 cecho "${STATES[$i]}" 		red 			;printspaces "${COLLONGEST[1]}" "${#STATES[$i]}" 
+				 cecho "${VMUUIDS[$i]}" 	blue 			;printspaces "${COLLONGEST[2]}" "${#VMUUIDS[$i]}"
+				 txt="${VMHOSTNAMES[$i]}" ; cecho "${txt}" blue ; printspaces "${COLLONGEST[3]}" "${#txt}"
+				 cecho "${VMHOSTUUIDS[$i]}" blue 			;printspaces "${COLLONGEST[4}" "${#VMHOSTUUIDS[$i]}"
+				 cecho "${VMDOMID[$i]}"		blue
+		;;
+	esac  
+	echo ""   
+done

@@ -279,12 +279,11 @@ getcmddata()
 	shopt -q -s extglob
 	# Array names are the object and parameter names with underscores replacing hyphens (variables can't have hypens)
 	# e.g. xe vdi params=name-label becomes ${vdi_name_label[$INDEX]}
-	PRE=${1%-*}
+	PRE=${1%-*} ; PRE=${PRE//-/_} 
+
 	for LINE in $(xe $@ |  sed 'N; /^\(.*\)\n\1$/!P; D' | sed  's/^$/#@#/g') ;do
 		case $LINE in 
-			'#@#') 
-					((i++)) ;continue 
-			;;
+			'#@#') ((i++)) ;continue ;;
 			*) 
 					VAR=${LINE%%\(*} ; VAR=${VAR##+([ ])} ; VAR=${VAR%%+([ ])} ; VAR=${PRE}_${VAR//-/_} 
 					eval $VAR\[$i\]=\"\${LINE#*: \}\"
@@ -294,16 +293,42 @@ getcmddata()
 	shopt -q -u extglob
 }
 
+getnetdata()
+{
+# Populate ALL arrays for Network UUIDs, Bridge names VLAN Tags and UUIDs, VM names and VMUUIDs
+	local IFS=$'\n'
+	getcmddata network-list params=uuid,name-label,bridge,MTU,default-locking-mode,VIF-uuids
+	getcmddata pif-list params=uuid,network-uuid,VLAN
+	
+	IFS=$'\n'
+	for i in $(seq 0 $(( ${#network_uuid[@]} - 1 )) ) ;do
+		NETUUIDS[$i]="${network_uuid[$i]}"
+		NETNAMES[$i]="${network_name_label[$i]}"
+		BRIDGENAMES[$i]="${network_bridge[$i]}"
+		if [[ "${BRIDGENAMES[$i]}" == *xapi* ]] ;then
+			for j in $(seq 0 $(( ${#pif_uuid[@]} - 1 )) ) ;do
+				if [[ "${pif_network_uuid[$j]}" == "${network_uuid[$i]}" ]];then
+					if [[ ! "${pif_VLAN[$j]}" == '-1' ]] ;then
+						VLANNUMS[$i]="${pif_VLAN[$j]}"
+					else	
+						VLANNUMS[$i]="-"
+					fi
+					break;
+				fi
+			done
+		fi
+	done
+}
+
+
 # Get host list and assign HOSTUUIDS[] and HOSTNAMES[] arrays
 gethostdata()
 {
 	local IFS=$'\n'
-	local LIST=$(xe host-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g')
-	i=0
-	for LINE in $LIST ;do
-		HOSTUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
-		HOSTNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
-		(( i++ ))
+	getcmddata host-list params=uuid,name-label
+	for i in $(seq 0 $(( ${#host_uuid[@]} - 1 )) ) ;do
+		HOSTUUIDS[$i]="${host_uuid[$i]}"
+		HOSTNAMES[$i]="${host_name_label[$i]}"
 	done
 	sort_arrays HOSTNAMES HOSTUUIDS
 }
@@ -312,12 +337,10 @@ gethostdata()
 gettemplatedata()
 {
 	local IFS=$'\n'
-	local LIST=$(xe template-list params=uuid,name-label | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}'  | sed -e's/\(\([^,]*,\)\{1\}[^,]*\),/\1\n/g'  | sed 's/(/\\(/g' | sed 's/)/\\)/g')
-	i=0
-	for LINE in $LIST ;do
-		TMPLUUIDS[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
-		TMPLNAMES[$i]="${LINE%%,*}" ;LINE="${LINE#*,}"
-		(( i++ ))
+	getcmddata template-list params=uuid,name-label
+	for i in $(seq 0 $(( ${#template_uuid[@]} - 1 )) ) ;do
+		TMPLUUIDS[$i]="${template_uuid[$i]}"
+		TMPLNAMES[$i]="${template_name_label[$i]}"
 	done
 	fsort_arrays TMPLNAMES TMPLUUIDS
 }
@@ -359,18 +382,75 @@ getvmdata()
 	done
 }
 
+getsrdata()
+{
+	IFS=$'\n'
+	getcmddata sr-list params=uuid,name-label,type,physical-utilisation,physical-size
+	for i in $(seq 0 $(( ${#sr_uuid[@]} - 1 )) ) ;do
+		SRUUIDS[$i]="${sr_uuid[$i]}"
+		SRNAMES[$i]="${sr_name_label[$i]}"
+		SRUSED[$i]="${sr_physical_utilisation[$i]}"
+		SRSIZE[$i]="${sr_physical_size[$i]}"
+		SRTYPES[$i]="${sr_type[$i]}"
+		if [[ "${SRUSED[$i]}" = '-1' || "${SRSIZE[$i]}" = '-1' ]] ; then
+			SRUSED[$i]=0 ; SRSIZE[$i]=0
+		fi
+		if [[ "${SRUSED[$i]}" -gt 0 ]] ;then
+			PERCENTSIZE[$i]=$(echo "scale=2; ${SRUSED[$i]} / ${SRSIZE[$i]} * 100" | bc | sed s/\\.[0-9]\\+//)
+		else	
+			PERCENTSIZE[$i]="100"	
+		fi
+		TOTALSIZE[$i]=$(getunit "${SRSIZE[$i]}")
+		USEDSIZE[$i]=$(getunit "${SRUSED[$i]}")
+		TEMPSIZE=$(( ${SRSIZE[$i]} - ${SRUSED[$i]} ))
+		FREESIZE[$i]=$(getunit "$TEMPSIZE")
+	done
+}
+
+getvdidata()
+{
+	local IFS=$'\n'
+	getcmddata vdi-list params=uuid,name-label,sr-uuid,sr-name-label,virtual-size
+	getcmddata vbd-list currently-attached=false params=uuid,vm-uuid,vm-name-label,vdi-uuid,userdevice
+	getcmddata sr-list params=uuid,type
+	for i in $(seq 0 $(( ${#vdi_uuid[@]} - 1 )) ) ;do
+		VDIUUIDS[$i]="${vdi_uuid[$i]}"
+		VDINAMES[$i]="${vdi_name_label[$i]}"
+		SRUUIDS[$i]="${vdi_sr_uuid[$i]}"
+		SRNAMES[$i]="${vdi_sr_name_label[$i]}"
+		for j in $(seq 0 $(( ${#sr_uuid[@]} - 1 )) ) ;do
+			case "${sr_uuid[$j]}" in
+				"${vdi_sr_uuid[$i]}") SRTYPES[$i]="${sr_type[$j]}" ;break ;;
+				*) SRTYPES[$i]="-" ;;
+			esac
+		done
+		for j in $(seq 0 $(( ${#vbd_uuid[@]} - 1 )) ) ;do
+			case "${vbd_vdi_uuid[$j]}" in 
+				"${vdi_uuid[$i]}" )					
+					VMUUIDS[$i]="${vbd_vm_uuid[$j]}"
+					VMNAMES[$i]="${vbd_vm_name_label[$j]}"
+					VMDEVS[$i]="${vbd_userdevice[$j]}"
+					break
+				;;
+				*)  VMUUIDS[$i]="-"
+					VMNAMES[$i]="-"
+					VMDEVS[$i]="-"
+				;;
+			esac
+		done
+		VDISIZES[$i]=$(getunit ${vdi_virtual_size[$i]})
+	done
+}
 
 # Get CPU core list and assign CPUUUIDS[] and CPUNUMS[] arrays
 getcpudata()
 {
 	local IFS=$'\n'
-	local LIST=$(xe host-cpu-list params=uuid,host-uuid,number | awk -F': ' '{print $2}' | sed '/^$/d' | sed -n '1h;2,$H;${g;s/\n/,/g;p}' | sed -e's/\(\([^,]*,\)\{2\}[^,]*\),/\1\n/g')
-	i=0
-	for LINE in $LIST ;do
-		CPUUUIDS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
-		CPUHOSTUUIDS[$i]="${LINE%%,*}" 	;LINE="${LINE#*,}"
-		CPUNUMS[$i]="${LINE%%,*}" 		;LINE="${LINE#*,}"
-		(( i++ ))
+	getcmddata host-cpu-list params=uuid,host-uuid,number
+	for i in $(seq 0 $(( ${#host_cpu_uuid[@]} - 1 )) ) ;do
+		CPUUUIDS[$i]="${host_cpu_uuid[$i]}"
+		CPUHOSTUUIDS[$i]="${host_cpu_host_uuid[$i]}"
+		CPUNUMS[$i]="${host_cpu_number[$i]}"
 	done
 	sort_arrays CPUUUDS CPUHOSTUUDS CPUNUMS
 }
