@@ -442,6 +442,28 @@ getvdidata()
 	done
 }
 
+#Get virtual block device data
+getvbddata()
+{
+        local IFS=$'\n'
+
+        #get array information
+        getcmddata vbd-list params=uuid,vm-uuid,vm-name-label,vdi-uuid,vdi-name-label,currently-attached,device,mode,type
+
+        #set array information
+        for i in $(seq 0 $(( ${#vbd_uuid[@]} - 1 )) ) ; do
+            VBDUUIDS[$i]="${vbd_uuid[$i]}"
+            VMUUIDS[$i]="${vbd_vm_uuid[$i]}"
+            VMNAMES[$i]="${vbd_vm_name_label[$i]}"
+            VDIUUIDS[$i]="${vbd_vdi_uuid[$i]}"
+            VDINAMES[$i]="${vbd_vdi_name_label[$i]}"
+            ATTACHED[$i]="${vbd_currently_attached[$i]}"
+            DEVICES[$i]="${vbd_device[$i]}"
+            VBDMODES[$i]="${vbd_mode[$i]}"
+            VBDTYPES[$i]="${vbd_type[$i]}"
+        done
+}
+
 # Get CPU core list and assign CPUUUIDS[] and CPUNUMS[] arrays
 getcpudata()
 {
