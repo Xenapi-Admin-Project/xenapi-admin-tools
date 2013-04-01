@@ -203,14 +203,19 @@ fsort_arrays()
 # Set ${XE} variable to include server, username and password 
 getpoolcreds()
 {
-	# Check to see if there's a local config file 
-	# File format  POOLMASTER="hostname" \n PORT="port" \n USERNAME="username" \n PASSWORD="password"
+	
+	# Check to see if there's a local user config file 
+	# File format below 
+	# POOLMASTER="hostname"
+	# PORT="port number"
+	# USERNAME="username"
+	# PASSWORD="password"
 	if [[ "$REMOTE" = "yes" ]] ;then
-		if [[ -d "$SCRIPTDIR/.XECONFIGS" ]] ;then
-			PERMS=$(stat -c '%a' "$SCRIPTDIR/.XECONFIGS")
+		if [[ -d "~/.XECONFIGS" ]] ;then
+			PERMS=$(stat -c '%a' "~/.XECONFIGS")
 			if [[ "$PERMS" =~ "[5-7]00" ]] ;then
-				select POOLHOST in $(awk -F= '/POOLMASTER/{print $2}' $SCRIPTDIR/.XECONFIG/*.cfg | sed 's/\"//g') ;do
-					XECONF=$(grep "$POOLHOST" $SCRIPTDIR/.XECONFIG/*.cfg | awk -F: '{print $1}')
+				select POOLHOST in $(awk -F= '/POOLMASTER/{print $2}' ~/.XECONFIG/*.cfg | sed 's/\"//g') ;do
+					XECONF=$(grep "$POOLHOST" ~/.XECONFIG/*.cfg | awk -F: '{print $1}')
 					source "$XECONF"
 					break ;
 				done
