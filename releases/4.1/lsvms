@@ -23,6 +23,9 @@
 # Version: 0.8.2
 # Date: Nov 28, 2012
 # Control domain was showing up if it sorted last. Fixed VMHOSTNAME/VMHOSTUUID null assignment bug
+# Version: 0.8.3
+# Date: Apr 1, 2013
+# Added -r mode to use config files in ~/.XECONFIGS/
 
 setup()
 {
@@ -32,7 +35,7 @@ setup()
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"
 	MODE="mixed"
-	VERSION="0.8.2"
+	VERSION="0.8.3"
 	ORDER="vmname"
 }
 
@@ -50,6 +53,7 @@ syntax()
         echo "	-n - shows VM Name, Status and Hostname"
         echo "	-m - shows VM Name, Status, VM UUID and Hostname"
         echo "	-o <value> - changes sort order by column, value can be vmname, hostname, vmuuid, hostuud"
+        echo "	-r - use local config files for remote poolmasters"
         echo "	-s <host> - remote poolmaster host"
         echo "	-p <password> - remote poolmaster password"
         echo "	-h - this help text"
@@ -59,7 +63,7 @@ syntax()
 }
 
 setup 
-while getopts :dcubnmhw:s:o:p: opt ;do
+while getopts :dcubnmhrw:s:o:p: opt ;do
         case $opt in
                 d) set -x ;;
                 h) syntax ;;
@@ -69,7 +73,8 @@ while getopts :dcubnmhw:s:o:p: opt ;do
                 n) MODE="name" ;;
                 m) MODE="mixed" ;;
                 o) ORDER="$OPTARG" ;;
-                s) REMOTE="yes" ; POOLMASTER="$OPTARG" ;;
+                r) REMOTE="yes" ;;
+                s) POOLMASTER="$OPTARG" ;;
                 p) PASSWORD="$OPTARG" ;;
                 w) isnumber "$OPTARG" && MINSPACE="$OPTARG" ;;
                 \?) echo "Unknown option"; syntax ;;

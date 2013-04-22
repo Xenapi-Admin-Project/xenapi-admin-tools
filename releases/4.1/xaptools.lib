@@ -24,11 +24,11 @@ cecho ()
 	  	echo -ne "$MSG"
 	else    
 		if [ -z $2 ] ;then
-			color="off"
+			COLOR="off"
 		else
-			eval color=\$$2
+			eval COLOR=\$$2
 		fi     
-		echo -ne "${color}"
+		echo -ne "${COLOR}"
 		echo -ne "$MSG"
 		echo -ne "${off}"
 	fi                      
@@ -45,6 +45,30 @@ printspaces()
 		echo -ne ","
 	else
 		printf "%*s" "$(( $COLUMN + $MINSPACE - $ITEM ))"
+	fi 
+}
+
+printtitlebar()
+{
+	# arg 1 - the title bar title
+	# arg 2 - the length of the longest line
+	TITLETEXT="$1"
+	BARLENGTH="$2"
+	eval COLOR=\$$3
+	
+	if [[ -z $COLOR ]] ;then
+		COLOR="${black}"
+	fi
+	
+	if [[ "$CSV" = "yes" ]] ;then
+		return 0
+	else
+		TITLELEN="${#TITLETEXT}"
+		BARPAD=$(( ($BARLENGTH / 2)  - ($TITLELEN / 2) ))
+		printf "${COLOR}%*s" "$BARPAD"
+		echo -ne "$1"
+		printf "${COLOR}%*s" "$BARPAD"
+		echo -ne "${off}" ; echo ""
 	fi 
 }
 
@@ -85,6 +109,19 @@ isnumber()
 		''|*[!0-9]*) return 1 ;;
 		*) return 0 ;;
 	esac	
+}
+
+isport()
+{
+	if isnumber "$1" ;then
+		if [[ "$1" -le "65535" ]] ;then
+			return 0
+		else 
+			return 1
+		fi
+	else
+		return 1
+	fi 
 }	
 
 # Check if argument is a UUID
@@ -200,47 +237,114 @@ fsort_arrays()
 	rm -f "$TMPFILE"
 }
 
-# Set ${XE} variable to include server, username and password 
+# Set ${XE_EXTRA_ARGS} variable to include server, username and password 
 getpoolcreds()
 {
-
-	
-	# Check to see if there's a local user config file 
-	# File format below 
+	# Check to see if there's a local poolmaster config file in ~/.XECONFDIR
+	# NAME="config name"
 	# POOLMASTER="hostname"
 	# PORT="port number"
 	# USERNAME="username"
 	# PASSWORD="password"
-	if [[ "$REMOTE" = "yes" ]] ;then
-		if [[ -d "~/.XECONFIGS" ]] ;then
-			PERMS=$(stat -c '%a' "~/.XECONFIGS")
-			if [[ "$PERMS" =~ "[5-7]00" ]] ;then
-				select POOLHOST in $(awk -F= '/POOLMASTER/{print $2}' ~/.XECONFIG/*.cfg | sed 's/\"//g') ;do
-					XECONF=$(grep "$POOLHOST" ~/.XECONFIG/*.cfg | awk -F: '{print $1}')
-					source "$XECONF"
-					break ;
-				done
-			else
-				cecho "Warning: " red 
-				echo "Permissions allow other users to read $SCRIPTDIR/.XECONFIGS" 
-				echo "Please remove read permissions for other users and re-run program"
-				exit
-			fi
+	
+	XECONFDIR="$HOME/.XECONFIGS"
+	if [[ ! -d "$XECONFDIR" ]] ;then
+		mkdir -p -m 500 "$XECONFDIR"
+	else
+		PERMS=$(stat -c '%a' "$XECONFDIR")
+		if [[ ! "$PERMS" =~ "[5-7][0-7]0" ]] ;then
+			echo "Changing permissions to rwx for $USER, nothing for everyone else"
+			chmod 500 "$XECONFDIR"
 		fi
-		if [[ -z "$POOLMASTER" ]] ;then
-			echo "Enter the remote poolmaster ip or hostname"
-			read -s POOLMASTER
-		fi
-		if [[ -z "$PORT" ]] ;then
-			echo "Enter the remote poolmaster port number [default 443]"
-			read -s PORT
-		fi
-		if [[ -z "$PASSWORD" ]] ;then
-			echo "Enter the remote poolmaster admin password"
-			read -s PASSWORD
-		fi
-		export XE_EXTRA_ARGS="server=${POOLMASTER},port=${PORT},username=${USERNAME},password=${PASSWORD}"
 	fi
+	
+	#if -s is not set then assume localhost
+	#if -s list is set then get list of configs from XECONFDIR
+	#if -s <poolmaster> is set then get missing data from poolmaster config in XECONFDIR
+	#if -s and -p are set get missing data from poolmaster config in XECONFDIR
+	#if find "$XECONFDIR/" -maxdepth 1 -name '*.cfg' -print -quit ;then
+	#	for CFG in $XECONFDIR/*.cfg ;do
+	#		echo $CFG
+	#	done
+	#else
+	#	echo "No configs found in $XECONFDIR"
+	#fi 
+
+
+	if [[ -z "$POOLMASTER" ]] ;then 			#assume localhost
+		return 0
+	elif [[ "$POOLMASTER" = "list" ]] ;then		#list and choose from configs
+		if find "$XECONFDIR" -maxdepth 1 -name '*.cfg' -quit ;then
+			i=0
+			for CFG in $(find $XECONFDIR -maxdepth 1 -name \*.cfg) ;do
+				CFGLABEL[$i]=$(awk -F= '/LABEL/{print $2}' $CFG | sed 's/\"//g')
+				CFGPOOLMASTER[$i]=$(awk -F= '/POOLMASTER/{print $2}' $CFG | sed 's/\"//g')
+				CFGPAIR[$i]="${CFGLABEL[$i]}: ${CFGPOOLMASTER[$i]}"
+				CFGPORT[$i]=$(awk -F= '/PORT/{print $2}' $CFG | sed 's/\"//g')
+				if ! isport ${CFGPORT[$i]} ;then
+					echo "${CFGPORT[$i]} for ${CFGPOOLMASTER[$i]} is not a valid port number"
+				fi
+				CFGUSERNAME[$i]=$(awk -F= '/USERNAME/{print $2}' $CFG | sed 's/\"//g')
+				CFGPASSWORD[$i]=$(awk -F= '/PASSWORD/{print $2}' $CFG | sed 's/\"//g')
+				(( i++ ))
+			done
+		else
+			echo "No configs found in $XECONFDIR"
+		fi 
+ 
+		fsort_arrays CFGLABEL CFGPOOLMASTER CFGPAIR CFGPORT CFGUSERNAME CFGPASSWORD
+
+		clear ; echo ""
+		title1 "Choose Config" ;echo ""
+		PS3="Please Choose: "
+		select CONFIG in ${CFGPAIR[@]} "Exit" ;do
+			case "$CONFIG" in
+				"Exit")	return 1 ;;
+				*) 
+					for i in $(seq 0 $(( ${#CFGLABEL[@]} - 1 )) ) ;do
+						if [[ "${CFGLABEL[$i]}" = "${CONFIG%%:*}" ]] ;then
+							LABEL=${CFGLABEL[$i]}
+							POOLMASTER=${CFGPOOLMASTER[$i]}
+							PORT=${CFGPORT[$i]}
+							USERNAME=${CFGUSERNAME[$i]}
+							PASSWORD=${CFGPASSWORD[$i]}
+						fi
+					done
+				;;
+			esac
+			break;
+		done
+	else			# use argument passed to -s 
+		if find "$XECONFDIR" -maxdepth 1 -name '*.cfg' -quit ;then
+			case $(grep -c "$POOLMASTER" "$XECONFDIR/*.cfg") in
+				0) echo "Unable to find a config for $POOLMASTER in $XECONFDIR" ;;
+				1) XECONF=$(grep "$POOLMASTER" "$XECONFDIR/*.cfg" | awk -F: '{print $1}')
+					source "$XECONF" ;;
+				*) echo "There are multiple matching configs for $POOLMASTER in $XECONFDIR" ;;
+			esac
+		fi
+	fi
+
+	
+	if [[ -z "$POOLMASTER" ]] ;then
+		echo "Enter the remote poolmaster ip or hostname"
+		read POOLMASTER
+	fi
+	if [[ -z "$PORT" ]] ;then
+		echo "Enter the remote poolmaster port number [default 443]"
+		read INPUT
+		PORT=${INPUT:-443}
+	fi
+	if [[ -z "$USERNAME" ]] ;then
+		echo "Enter the remote poolmaster username [default root]"
+		read INPUT
+		USERNAME=${INPUT:-root}
+	fi
+	if [[ -z "$PASSWORD" ]] ;then
+		echo "Enter the remote poolmaster admin password"
+		read -s PASSWORD
+	fi
+	export XE_EXTRA_ARGS="server=${POOLMASTER},port=${PORT},username=${USERNAME},password=${PASSWORD}"
 }	
 
 # Show a select menu by passing multiple array NAMES and returns the UUID. Only pass ONE array holding UUID
