@@ -77,7 +77,6 @@ getcolwidth()
 {
 	#get longest item in array
 	array=( "$@" )
-	i=0
 	LONGEST="0"
 	IFS=$'\n'
 	for ITEM in ${array[@]} ;do
@@ -163,9 +162,9 @@ yesno()
 	read ANS
 	while true ;do
 		case $ANS in
-			[yY] | [yY][Ee][Ss] ) return 0 ;;
-			[nN] | [n|N][O|o] )   return 1 ;;
-			*) echo "Invalid input"        ;;
+			[yY] | [yY][Ee][Ss] ) return 0                ;;
+			[nN] | [n|N][O|o] )   return 1                ;;
+			*) echo -n "Invalid; $1? <yes|no> "; read ANS ;;
 		esac
 	done
 }
