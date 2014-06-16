@@ -162,9 +162,9 @@ yesno()
 	read ANS
 	while true ;do
 		case $ANS in
-			[yY] | [yY][Ee][Ss] ) return 0                ;;
-			[nN] | [n|N][O|o] )   return 1                ;;
-			*) echo -n "Invalid; $1? <yes|no> "; read ANS ;;
+			[yY] | [yY][Ee][Ss] ) return 0             ;;
+			[nN] | [n|N][O|o] )   return 1             ;;
+			*) echo -n "Invalid; $1? <y|n> "; read ANS ;;
 		esac
 	done
 }
