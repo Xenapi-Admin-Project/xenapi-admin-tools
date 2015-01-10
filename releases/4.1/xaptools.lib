@@ -252,7 +252,6 @@ getpoolcreds()
 	else
 		PERMS=$(stat -c '%a' "$XECONFDIR")
 		if [[ ! "$PERMS" =~ "[5-7][0-7]0" ]] ;then
-			echo "Changing permissions to rwx for $USER, nothing for everyone else"
 			chmod 500 "$XECONFDIR"
 		fi
 	fi

@@ -15,7 +15,12 @@
 setup()
 {
 	SCRIPTDIR=$(dirname $(readlink -f "${BASH_SOURCE[0]}"))
-	source "$SCRIPTDIR/xaptools.lib" 
+	if [[ -e "$SCRIPTDIR/xaptools.lib" ]] ;then
+		source "$SCRIPTDIR/xaptools.lib" 
+	else
+		echo "Unable to load xaptools.lib"
+		exit 1
+	fi
 	setcolors	
 	DEFSPACE="5"
 	MINSPACE="$DEFSPACE"
