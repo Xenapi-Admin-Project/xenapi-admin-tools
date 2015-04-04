@@ -52,8 +52,19 @@ printtitlebar()
 {
 	# arg 1 - the title bar title
 	# arg 2 - the length of the longest line
-	TITLETEXT="$1"
+	
+    TITLETEXT="$1"
 	BARLENGTH="$2"
+	TITLELEN="${#TITLETEXT}"
+	
+	if [[ $(( TITLELEN % 2)) -ne 0 ]]; then
+		(( TITLELEN++ ))
+	fi
+	
+	if [[ $(( BARLENGTH % 2)) -ne 0 ]]; then
+		(( BARLENGTH++ ))
+	fi
+	
 	eval COLOR=\$$3
 	
 	if [[ -z $COLOR ]] ;then
@@ -63,7 +74,7 @@ printtitlebar()
 	if [[ "$CSV" = "yes" ]] ;then
 		return 0
 	else
-		TITLELEN="${#TITLETEXT}"
+		
 		BARPAD=$(( ($BARLENGTH / 2)  - ($TITLELEN / 2) ))
 		printf "${COLOR}%*s" "$BARPAD"
 		echo -ne "$1"
@@ -77,6 +88,7 @@ getcolwidth()
 {
 	#get longest item in array
 	array=( "$@" )
+	i=0
 	LONGEST="0"
 	IFS=$'\n'
 	for ITEM in ${array[@]} ;do
@@ -162,9 +174,9 @@ yesno()
 	read ANS
 	while true ;do
 		case $ANS in
-			[yY] | [yY][Ee][Ss] ) return 0             ;;
-			[nN] | [n|N][O|o] )   return 1             ;;
-			*) echo -n "Invalid; $1? <y|n> "; read ANS ;;
+			[yY] | [yY][Ee][Ss] ) return 0 ;;
+			[nN] | [n|N][O|o] )   return 1 ;;
+			*) echo "Invalid input" ; return 1  ;;
 		esac
 	done
 }
@@ -240,21 +252,30 @@ fsort_arrays()
 getpoolcreds()
 {
 	# Check to see if there's a local poolmaster config file in ~/.XECONFDIR
-	# NAME="config name"
+	# LABEL="config name"
 	# POOLMASTER="hostname"
 	# PORT="port number"
 	# USERNAME="username"
 	# PASSWORD="password"
+	#
 	
-	XECONFDIR="$HOME/.XECONFIGS"
-	if [[ ! -d "$XECONFDIR" ]] ;then
-		mkdir -p -m 500 "$XECONFDIR"
-	else
-		PERMS=$(stat -c '%a' "$XECONFDIR")
-		if [[ ! "$PERMS" =~ "[5-7][0-7]0" ]] ;then
-			chmod 500 "$XECONFDIR"
-		fi
-	fi
+	POOLMASTER="cloud1.acs.edcc.edu"
+	USERNAME="root"
+	PORT="443"
+	PASSWORD="cscisadmin"
+	export XE_EXTRA_ARGS="server=${POOLMASTER},port=${PORT},username=${USERNAME},password=${PASSWORD}"
+	return
+	
+	#XECONFDIR="$HOME/.XECONFIGS"
+	#if [[ ! -d "$XECONFDIR" ]] ;then
+#		mkdir -p -m 500 "$XECONFDIR"
+	#else
+	#	PERMS=$(stat -c '%a' "$XECONFDIR")
+	#	if [[ ! "$PERMS" =~ "[5-7][0-7]0" ]] ;then
+	#		echo "Changing permissions to rwx for $USER, nothing for everyone else"
+	#		chmod 500 "$XECONFDIR"
+	#	fi
+	#fi
 	
 	#if -s is not set then assume localhost
 	#if -s list is set then get list of configs from XECONFDIR

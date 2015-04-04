@@ -15,7 +15,8 @@ setup()
 	else
 		echo "Unable to load xaptools.lib"
 		exit 1
-	fi	setcolors	
+	fi	
+	setcolors	
 	DEFSPACE="3"
 	MINSPACE="$DEFSPACE"
 	MODE="mixed"
