@@ -259,10 +259,10 @@ getpoolcreds()
 	# PASSWORD="password"
 	#
 	
-	POOLMASTER="cloud1.acs.edcc.edu"
-	USERNAME="root"
+	POOLMASTER="hostname"
+	USERNAME="user"
 	PORT="443"
-	PASSWORD="cscisadmin"
+	PASSWORD="password"
 	export XE_EXTRA_ARGS="server=${POOLMASTER},port=${PORT},username=${USERNAME},password=${PASSWORD}"
 	return
 	
